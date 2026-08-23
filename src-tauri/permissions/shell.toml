@@ -1,0 +1,18 @@
+[[permission]]
+identifier = "allow-shell-commands"
+description = "Shell commands for opening files, listing folders, plugins, and associations"
+commands.allow = [
+  "take_launch_path",
+  "parent_dir",
+  "list_dir_files",
+  "load_association_settings",
+  "save_association_settings",
+  "load_window_sizes",
+  "save_window_sizes",
+  "grant_file_associations",
+  "query_file_associations",
+  "revoke_file_associations",
+  "video_stream_url",
+  "list_plugin_dirs",
+  "read_plugin_file"
+]

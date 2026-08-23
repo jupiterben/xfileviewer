@@ -1,0 +1,73 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "xfileviewer",
+  "version": "0.1.0",
+  "identifier": "com.xfileviewer.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": " ",
+        "decorations": true,
+        "width": 1100,
+        "height": 720,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$HOME/**",
+          "$HOME/**/*",
+          "$DESKTOP/**",
+          "$DOCUMENT/**",
+          "$DOWNLOAD/**",
+          "$PICTURE/**",
+          "$VIDEO/**",
+          "$PUBLIC/**",
+          "/media/**",
+          "/mnt/**",
+          "/run/media/**",
+          "/tmp/**",
+          "/**/*"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      { "name": "JPEG Image", "ext": ["jpg", "jpeg"], "mimeType": "image/jpeg", "role": "Viewer" },
+      { "name": "PNG Image", "ext": ["png"], "mimeType": "image/png", "role": "Viewer" },
+      { "name": "GIF Image", "ext": ["gif"], "mimeType": "image/gif", "role": "Viewer" },
+      { "name": "WebP Image", "ext": ["webp"], "mimeType": "image/webp", "role": "Viewer" },
+      { "name": "BMP Image", "ext": ["bmp"], "mimeType": "image/bmp", "role": "Viewer" },
+      { "name": "SVG Image", "ext": ["svg"], "mimeType": "image/svg+xml", "role": "Viewer" },
+      { "name": "MPEG-4 Video", "ext": ["mp4"], "mimeType": "video/mp4", "role": "Viewer" },
+      { "name": "WebM Video", "ext": ["webm"], "mimeType": "video/webm", "role": "Viewer" },
+      { "name": "Matroska Video", "ext": ["mkv"], "mimeType": "video/x-matroska", "role": "Viewer" },
+      { "name": "QuickTime Video", "ext": ["mov"], "mimeType": "video/quicktime", "role": "Viewer" },
+      { "name": "AVI Video", "ext": ["avi"], "mimeType": "video/x-msvideo", "role": "Viewer" },
+      { "name": "Markdown", "ext": ["md", "markdown"], "mimeType": "text/markdown", "role": "Viewer" }
+    ],
+    "linux": {
+      "deb": { "desktopTemplate": "linux/xfileviewer.desktop" },
+      "rpm": { "desktopTemplate": "linux/xfileviewer.desktop" }
+    }
+  }
+}
