@@ -1,7 +1,11 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { LogicalSize, currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
+import {
+  LogicalPosition,
+  LogicalSize,
+  currentMonitor,
+  getCurrentWindow,
+} from "@tauri-apps/api/window";
 import { PluginRegistry } from "./core/registry";
 import { basename } from "./core/path";
 import { buildSequence, move } from "./core/sequence";
@@ -35,7 +39,12 @@ import {
   setRowGranted,
   type AssociationRow,
 } from "./shell/associationSettings";
-import { fitWindowToContent, type Size } from "./shell/fitWindow";
+import { resolveAppVersion } from "./shell/appVersion";
+import {
+  fitWindowToContent,
+  positionKeepingCenter,
+  type Size,
+} from "./shell/fitWindow";
 import { createWheelPager, kindUsesWheelPaging } from "./shell/wheelPager";
 import {
   rememberSize,
@@ -74,6 +83,7 @@ let lastContentSize: { width: number; height: number; chrome: Size } | null =
 let saveSizeTimer: number | undefined;
 let appliedRows: AssociationRow[] = [];
 let associationRows: AssociationRow[] = [];
+let appVersionLabel = "";
 
 interface AssociationQuery {
   osManaged: boolean;
@@ -109,6 +119,12 @@ function showEmpty(message: string) {
     void openSettings();
   });
   wrap.append(p, btn);
+  if (appVersionLabel) {
+    const ver = document.createElement("p");
+    ver.className = "app-version";
+    ver.textContent = appVersionLabel;
+    wrap.append(ver);
+  }
   host.append(wrap);
   lastContentSize = null;
   setWindowTitle("");
@@ -179,9 +195,12 @@ function renderAssociationRows() {
     kindName.textContent = group.label;
     heading.append(kindInput, kindName);
     settingsList.append(heading);
+    const wrap = document.createElement("div");
+    wrap.className = "assoc-exts";
     for (const row of group.rows) {
       const label = document.createElement("label");
       label.className = "assoc-row";
+      label.title = row.error ? row.error : row.pluginName;
       const input = document.createElement("input");
       input.type = "checkbox";
       input.checked = row.granted;
@@ -192,18 +211,11 @@ function renderAssociationRows() {
       const ext = document.createElement("span");
       ext.className = "assoc-ext";
       ext.textContent = `.${row.ext}`;
-      const plugin = document.createElement("span");
-      plugin.className = "assoc-plugin";
-      plugin.textContent = row.pluginName;
-      label.append(input, ext, plugin);
-      if (row.error) {
-        const err = document.createElement("span");
-        err.className = "assoc-error";
-        err.textContent = row.error;
-        label.append(err);
-      }
-      settingsList.append(label);
+      label.append(input, ext);
+      if (row.error) label.classList.add("is-error");
+      wrap.append(label);
     }
+    settingsList.append(wrap);
   }
   updateApplyEnabled();
 }
@@ -290,16 +302,44 @@ async function resizeWindowToContent(
   height: number,
   chrome: Size = { width: 0, height: 0 },
 ) {
+  const win = getCurrentWindow();
+  const scale = await win.scaleFactor();
   const monitor = await currentMonitor();
   const work = monitor
-    ? monitor.workArea.size.toLogical(monitor.scaleFactor)
-    : { width: window.screen.availWidth, height: window.screen.availHeight };
+    ? {
+        ...monitor.workArea.position.toLogical(monitor.scaleFactor),
+        ...monitor.workArea.size.toLogical(monitor.scaleFactor),
+      }
+    : {
+        x: 0,
+        y: 0,
+        width: window.screen.availWidth,
+        height: window.screen.availHeight,
+      };
   const size = fitWindowToContent(
     { width, height },
     chrome,
     { width: work.width, height: work.height },
   );
-  await getCurrentWindow().setSize(new LogicalSize(size.width, size.height));
+  const outerPos = (await win.outerPosition()).toLogical(scale);
+  const outerSize = (await win.outerSize()).toLogical(scale);
+  const innerSize = (await win.innerSize()).toLogical(scale);
+  const nextOuter = {
+    width: size.width + (outerSize.width - innerSize.width),
+    height: size.height + (outerSize.height - innerSize.height),
+  };
+  const pos = positionKeepingCenter(
+    {
+      x: outerPos.x,
+      y: outerPos.y,
+      width: outerSize.width,
+      height: outerSize.height,
+    },
+    nextOuter,
+    work,
+  );
+  await win.setSize(new LogicalSize(size.width, size.height));
+  await win.setPosition(new LogicalPosition(pos.x, pos.y));
 }
 
 function mountCurrent() {
@@ -530,6 +570,12 @@ window.addEventListener(
 );
 
 async function boot() {
+  appVersionLabel = await resolveAppVersion();
+  const versionEl = document.querySelector<HTMLElement>("#app-version");
+  if (versionEl && appVersionLabel) {
+    versionEl.textContent = appVersionLabel;
+    versionEl.hidden = false;
+  }
   for (const plugin of builtinPlugins()) {
     registry.register(plugin);
   }
@@ -545,9 +591,6 @@ async function boot() {
   }
   await getCurrentWindow().onResized(() => {
     scheduleSaveWindowSize();
-  });
-  await listen<string>("open-file", (event) => {
-    void openPath(event.payload);
   });
   await getCurrentWebview().onDragDropEvent((event) => {
     if (event.payload.type === "drop" && event.payload.paths[0]) {

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 struct LaunchState {
     path: Mutex<Option<String>>,
@@ -561,16 +561,6 @@ pub fn run() {
     let media_port = media_server::start().expect("start local media server");
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            if let Some(path) = first_file_arg(argv) {
-                set_window_file_title(app, &path);
-                let _ = app.emit("open-file", path);
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
-                }
-            }
-        }))
         .manage(LaunchState {
             path: Mutex::new(launch.clone()),
         })

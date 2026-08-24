@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "xfileviewer",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "identifier": "com.xfileviewer.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "enableGTKAppId": false,
     "windows": [
       {
         "title": " ",
@@ -52,22 +53,112 @@
       "icons/icon.ico"
     ],
     "fileAssociations": [
-      { "name": "JPEG Image", "ext": ["jpg", "jpeg"], "mimeType": "image/jpeg", "role": "Viewer" },
-      { "name": "PNG Image", "ext": ["png"], "mimeType": "image/png", "role": "Viewer" },
-      { "name": "GIF Image", "ext": ["gif"], "mimeType": "image/gif", "role": "Viewer" },
-      { "name": "WebP Image", "ext": ["webp"], "mimeType": "image/webp", "role": "Viewer" },
-      { "name": "BMP Image", "ext": ["bmp"], "mimeType": "image/bmp", "role": "Viewer" },
-      { "name": "SVG Image", "ext": ["svg"], "mimeType": "image/svg+xml", "role": "Viewer" },
-      { "name": "MPEG-4 Video", "ext": ["mp4"], "mimeType": "video/mp4", "role": "Viewer" },
-      { "name": "WebM Video", "ext": ["webm"], "mimeType": "video/webm", "role": "Viewer" },
-      { "name": "Matroska Video", "ext": ["mkv"], "mimeType": "video/x-matroska", "role": "Viewer" },
-      { "name": "QuickTime Video", "ext": ["mov"], "mimeType": "video/quicktime", "role": "Viewer" },
-      { "name": "AVI Video", "ext": ["avi"], "mimeType": "video/x-msvideo", "role": "Viewer" },
-      { "name": "Markdown", "ext": ["md", "markdown"], "mimeType": "text/markdown", "role": "Viewer" }
+      {
+        "name": "JPEG Image",
+        "ext": [
+          "jpg",
+          "jpeg"
+        ],
+        "mimeType": "image/jpeg",
+        "role": "Viewer"
+      },
+      {
+        "name": "PNG Image",
+        "ext": [
+          "png"
+        ],
+        "mimeType": "image/png",
+        "role": "Viewer"
+      },
+      {
+        "name": "GIF Image",
+        "ext": [
+          "gif"
+        ],
+        "mimeType": "image/gif",
+        "role": "Viewer"
+      },
+      {
+        "name": "WebP Image",
+        "ext": [
+          "webp"
+        ],
+        "mimeType": "image/webp",
+        "role": "Viewer"
+      },
+      {
+        "name": "BMP Image",
+        "ext": [
+          "bmp"
+        ],
+        "mimeType": "image/bmp",
+        "role": "Viewer"
+      },
+      {
+        "name": "SVG Image",
+        "ext": [
+          "svg"
+        ],
+        "mimeType": "image/svg+xml",
+        "role": "Viewer"
+      },
+      {
+        "name": "MPEG-4 Video",
+        "ext": [
+          "mp4"
+        ],
+        "mimeType": "video/mp4",
+        "role": "Viewer"
+      },
+      {
+        "name": "WebM Video",
+        "ext": [
+          "webm"
+        ],
+        "mimeType": "video/webm",
+        "role": "Viewer"
+      },
+      {
+        "name": "Matroska Video",
+        "ext": [
+          "mkv"
+        ],
+        "mimeType": "video/x-matroska",
+        "role": "Viewer"
+      },
+      {
+        "name": "QuickTime Video",
+        "ext": [
+          "mov"
+        ],
+        "mimeType": "video/quicktime",
+        "role": "Viewer"
+      },
+      {
+        "name": "AVI Video",
+        "ext": [
+          "avi"
+        ],
+        "mimeType": "video/x-msvideo",
+        "role": "Viewer"
+      },
+      {
+        "name": "Markdown",
+        "ext": [
+          "md",
+          "markdown"
+        ],
+        "mimeType": "text/markdown",
+        "role": "Viewer"
+      }
     ],
     "linux": {
-      "deb": { "desktopTemplate": "linux/xfileviewer.desktop" },
-      "rpm": { "desktopTemplate": "linux/xfileviewer.desktop" }
+      "deb": {
+        "desktopTemplate": "linux/xfileviewer.desktop"
+      },
+      "rpm": {
+        "desktopTemplate": "linux/xfileviewer.desktop"
+      }
     }
   }
 }

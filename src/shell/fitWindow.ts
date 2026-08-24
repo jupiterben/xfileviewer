@@ -3,6 +3,28 @@ export interface Size {
   height: number;
 }
 
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface Rect extends Point, Size {}
+
+export function positionKeepingCenter(
+  current: Rect,
+  nextSize: Size,
+  workArea: Rect,
+): Point {
+  const x = Math.round(current.x + current.width / 2 - nextSize.width / 2);
+  const y = Math.round(current.y + current.height / 2 - nextSize.height / 2);
+  const maxX = workArea.x + workArea.width - nextSize.width;
+  const maxY = workArea.y + workArea.height - nextSize.height;
+  return {
+    x: Math.min(Math.max(x, workArea.x), Math.max(workArea.x, maxX)),
+    y: Math.min(Math.max(y, workArea.y), Math.max(workArea.y, maxY)),
+  };
+}
+
 export function fitWindowToContent(
   content: Size,
   chrome: Size,

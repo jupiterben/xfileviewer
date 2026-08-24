@@ -16,6 +16,7 @@ cd "$ROOT"
 SKIP_DEPS=0
 BUILD_ONLY=0
 MIN_NODE_MAJOR=18
+STAMPED_VERSION=""
 
 usage() {
   cat <<'EOF'
@@ -23,9 +24,12 @@ usage() {
 
   检查并安装系统依赖 / Node / Rust，编译 Tauri 应用，再安装到系统。
 
-  --skip-deps    跳过系统依赖安装（仍检查 Node / Rust）
-  --build-only   只编译，不安装
-  -h, --help     显示帮助
+  --skip-deps      跳过系统依赖安装（仍检查 Node / Rust）
+  --build-only     只编译，不安装
+  --print-version  只打印将要使用的版本号
+  -h, --help       显示帮助
+
+每次安装自动加补丁号（取 源码+1、git 提交数、已安装+1 的最大值），写入 package.json / tauri.conf.json / Cargo.toml。
 EOF
 }
 
@@ -234,6 +238,167 @@ install_system_deps() {
   esac
 }
 
+# 解析 X.Y.Z（忽略 -rev / +meta），写入 nameref。
+parse_semver() {
+  local v="${1%%-*}"
+  v="${v%%+*}"
+  local -n _major="$2" _minor="$3" _patch="$4"
+  if [[ "$v" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+    _major="${BASH_REMATCH[1]}"
+    _minor="${BASH_REMATCH[2]}"
+    _patch="${BASH_REMATCH[3]}"
+  else
+    _major=0
+    _minor=1
+    _patch=0
+  fi
+}
+
+max_n() {
+  local m=0 n
+  for n in "$@"; do
+    [[ "$n" =~ ^[0-9]+$ ]] || continue
+    (( n > m )) && m=$n
+  done
+  printf '%s' "$m"
+}
+
+installed_app_version() {
+  local v=""
+  if have dpkg-query; then
+    v="$(dpkg-query -W -f '${Version}' xfileviewer 2>/dev/null || true)"
+    [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  fi
+  if have rpm; then
+    v="$(rpm -q --qf '%{VERSION}' xfileviewer 2>/dev/null || true)"
+    [[ -n "$v" && "$v" != *"not installed"* ]] && { printf '%s' "$v"; return 0; }
+  fi
+  return 0
+}
+
+# 每次安装都升高补丁号，避免 apt 认为「已是最新」。
+design_version() {
+  local major=0 minor=1 src_patch=0 git_patch=0 inst_patch=0
+  local current installed inst_major=0 inst_minor=0
+  current="$(node -p "require('./package.json').version" 2>/dev/null || echo 0.1.0)"
+  parse_semver "$current" major minor src_patch
+  src_patch=$((src_patch + 1))
+  if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git_patch="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || echo 0)"
+  fi
+  installed="$(installed_app_version)"
+  if [[ -n "$installed" ]]; then
+    parse_semver "$installed" inst_major inst_minor inst_patch
+    inst_patch=$((inst_patch + 1))
+  fi
+  local patch
+  patch="$(max_n "$src_patch" "$git_patch" "$inst_patch")"
+  [[ "$patch" =~ ^[0-9]+$ && "$patch" -ge 1 ]] || patch="$(date -u +%Y%m%d)"
+  printf '%s.%s.%s' "$major" "$minor" "$patch"
+}
+
+stamp_version() {
+  local version hash=""
+  version="$(design_version)"
+  STAMPED_VERSION="$version"
+  hash="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+  log "应用版本 ${version}${hash:+ ($hash)}"
+  APP_VERSION="$version" node <<'EOF'
+const fs = require("fs");
+const version = process.env.APP_VERSION;
+if (!version) {
+  console.error("APP_VERSION 为空");
+  process.exit(1);
+}
+
+function writeJson(file, mutate) {
+  const data = JSON.parse(fs.readFileSync(file, "utf8"));
+  mutate(data);
+  fs.writeFileSync(file, JSON.stringify(data, null, 2) + "\n");
+}
+
+writeJson("package.json", (pkg) => {
+  pkg.version = version;
+});
+
+if (fs.existsSync("package-lock.json")) {
+  writeJson("package-lock.json", (lock) => {
+    lock.version = version;
+    if (lock.packages && lock.packages[""]) lock.packages[""].version = version;
+  });
+}
+
+writeJson("src-tauri/tauri.conf.json", (tauri) => {
+  tauri.version = version;
+});
+
+const cargoPath = "src-tauri/Cargo.toml";
+const cargo = fs.readFileSync(cargoPath, "utf8");
+fs.writeFileSync(
+  cargoPath,
+  cargo.replace(/^version\s*=\s*"[^"]+"/m, `version = "${version}"`),
+);
+EOF
+}
+
+# 避免上次构建的旧包被 glob 误选（真正安装仍按戳记版本匹配）。
+clean_stale_bundles() {
+  local dir
+  for dir in src-tauri/target/release/bundle/deb src-tauri/target/release/bundle/rpm; do
+    [[ -d "$dir" ]] || continue
+    log "清理旧打包产物: $dir"
+    find "$dir" -maxdepth 1 \( -name '*.deb' -o -name '*.rpm' \) -delete
+  done
+}
+
+# 选出文件名包含戳记版本的包；找不到则列出目录内容并退出。
+pick_stamped_bundle() {
+  local dir="$1" ext="$2" version="$3"
+  local -a matches leftover
+  [[ -n "$version" ]] || die "内部错误: 未设置戳记版本，无法选择 .${ext}"
+  shopt -s nullglob
+  matches=("$dir"/*_"${version}"_*."$ext")
+  if [[ ${#matches[@]} -eq 0 ]]; then
+    matches=("$dir"/*-"${version}"-*."$ext")
+  fi
+  leftover=("$dir"/*."$ext")
+  shopt -u nullglob
+  if [[ ${#matches[@]} -eq 0 ]]; then
+    die "未找到版本 ${version} 的 .${ext}（目录 ${dir} 现有: ${leftover[*]:-无}）"
+  fi
+  local newest="" f
+  for f in "${matches[@]}"; do
+    if [[ -z "$newest" || "$f" -nt "$newest" ]]; then
+      newest="$f"
+    fi
+  done
+  printf '%s' "$newest"
+}
+
+installed_deb_version() {
+  dpkg-query -W -f '${Version}' xfileviewer 2>/dev/null || true
+}
+
+install_deb() {
+  local pkg version installed
+  pkg="$(abs_path "$1")"
+  version="$2"
+  installed="$(installed_deb_version)"
+  log "安装 ${pkg}（戳记版本 ${version}）"
+  if [[ -n "$installed" && "$installed" == "$version" ]]; then
+    log "已安装同版本 ${installed}，执行 --reinstall"
+    run_root apt-get install --reinstall -y "$pkg" || {
+      run_root dpkg -i "$pkg"
+      run_root apt-get install -f -y
+    }
+  else
+    run_root apt-get install -y "$pkg" || {
+      run_root dpkg -i "$pkg"
+      run_root apt-get install -f -y
+    }
+  fi
+}
+
 build_app() {
   log "安装 npm 依赖"
   if [[ -f package-lock.json ]]; then
@@ -249,6 +414,7 @@ build_app() {
     *) extra+=(--no-bundle) ;;
   esac
 
+  clean_stale_bundles
   limit_build_jobs
   log "编译 xfileviewer"
   run_niced npm run tauri build -- "${extra[@]}"
@@ -257,31 +423,26 @@ build_app() {
 install_app() {
   [[ "$BUILD_ONLY" -eq 1 ]] && { log "已跳过安装（--build-only）"; return 0; }
 
+  local version="${STAMPED_VERSION:-}"
+  [[ -n "$version" ]] || version="$(design_version)"
+
   local deb rpm bin
-  shopt -s nullglob
-  deb=(src-tauri/target/release/bundle/deb/*.deb)
-  rpm=(src-tauri/target/release/bundle/rpm/*.rpm)
   bin="src-tauri/target/release/xfileviewer"
-  shopt -u nullglob
 
   case "$PM" in
     apt)
-      [[ ${#deb[@]} -ge 1 ]] || die "未找到 .deb 包"
-      log "安装 ${deb[0]}"
-      run_root apt-get install -y "$(abs_path "${deb[0]}")" || {
-        run_root dpkg -i "$(abs_path "${deb[0]}")"
-        run_root apt-get install -f -y
-      }
+      deb="$(pick_stamped_bundle src-tauri/target/release/bundle/deb deb "$version")"
+      install_deb "$deb" "$version"
       ;;
     dnf)
-      [[ ${#rpm[@]} -ge 1 ]] || die "未找到 .rpm 包"
-      log "安装 ${rpm[0]}"
-      run_root dnf install -y "$(abs_path "${rpm[0]}")"
+      rpm="$(pick_stamped_bundle src-tauri/target/release/bundle/rpm rpm "$version")"
+      log "安装 $(abs_path "$rpm")（戳记版本 ${version}）"
+      run_root dnf install -y "$(abs_path "$rpm")"
       ;;
     zypper)
-      [[ ${#rpm[@]} -ge 1 ]] || die "未找到 .rpm 包"
-      log "安装 ${rpm[0]}"
-      run_root zypper --non-interactive install --allow-unsigned-rpm "$(abs_path "${rpm[0]}")"
+      rpm="$(pick_stamped_bundle src-tauri/target/release/bundle/rpm rpm "$version")"
+      log "安装 $(abs_path "$rpm")（戳记版本 ${version}）"
+      run_root zypper --non-interactive install --allow-unsigned-rpm "$(abs_path "$rpm")"
       ;;
     pacman|*)
       [[ -x "$bin" ]] || die "未找到可执行文件: $bin"
@@ -316,6 +477,7 @@ for arg in "$@"; do
   case "$arg" in
     --skip-deps) SKIP_DEPS=1 ;;
     --build-only|--no-install) BUILD_ONLY=1 ;;
+    --print-version) design_version; printf '\n'; exit 0 ;;
     -h|--help) usage; exit 0 ;;
     *) die "未知参数: $arg（使用 -h 查看帮助）" ;;
   esac
@@ -327,5 +489,6 @@ detect_pm
 install_system_deps
 ensure_node
 ensure_rust
+stamp_version
 build_app
 install_app

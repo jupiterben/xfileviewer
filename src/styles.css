@@ -301,28 +301,30 @@ body {
   display: none;
 }
 
+.assoc-exts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0 4px 1.6em;
+}
+
 .assoc-row {
-  display: grid;
-  grid-template-columns: auto 5em 1fr auto;
+  display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0 8px 1.6em;
-  border-bottom: 1px solid #2a2d36;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid #2a2d36;
+  border-radius: 6px;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.assoc-row.is-error {
+  border-color: #f28b82;
 }
 
 .assoc-ext {
   font-variant-numeric: tabular-nums;
-}
-
-.assoc-plugin {
-  color: #9aa0a6;
-  font-size: 13px;
-}
-
-.assoc-error {
-  color: #f28b82;
-  font-size: 12px;
 }
 
 .assoc-kind {
@@ -342,9 +344,16 @@ body {
 
 .settings-footer {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   padding: 12px 16px;
   border-top: 1px solid #2a2d36;
+}
+
+.app-version {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7078;
 }
 
 .settings-footer button:disabled {

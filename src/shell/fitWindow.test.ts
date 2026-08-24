@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitWindowToContent } from "./fitWindow";
+import { fitWindowToContent, positionKeepingCenter } from "./fitWindow";
 
 describe("fitWindowToContent", () => {
   it("sizes the window to the full image plus chrome when it fits the screen", () => {
@@ -41,5 +41,39 @@ describe("fitWindowToContent", () => {
         { width: 100, height: 80 },
       ),
     ).toEqual({ width: 120, height: 120 });
+  });
+});
+
+describe("positionKeepingCenter", () => {
+  const work = { x: 0, y: 0, width: 1920, height: 1080 };
+
+  it("keeps the window center when the size changes", () => {
+    expect(
+      positionKeepingCenter(
+        { x: 400, y: 200, width: 800, height: 600 },
+        { width: 400, height: 300 },
+        work,
+      ),
+    ).toEqual({ x: 600, y: 350 });
+  });
+
+  it("clamps so a larger window still stays inside the work area", () => {
+    expect(
+      positionKeepingCenter(
+        { x: 0, y: 0, width: 200, height: 160 },
+        { width: 800, height: 600 },
+        work,
+      ),
+    ).toEqual({ x: 0, y: 0 });
+  });
+
+  it("clamps against the right and bottom edges", () => {
+    expect(
+      positionKeepingCenter(
+        { x: 1800, y: 980, width: 120, height: 100 },
+        { width: 400, height: 300 },
+        work,
+      ),
+    ).toEqual({ x: 1520, y: 780 });
   });
 });
