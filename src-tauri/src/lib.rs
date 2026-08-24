@@ -1,10 +1,12 @@
 mod media_server;
+mod windows_assoc;
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
@@ -46,9 +48,45 @@ fn first_file_arg<I>(args: I) -> Option<String>
 where
     I: IntoIterator<Item = String>,
 {
-    args.into_iter()
-        .skip(1)
-        .find(|arg| !arg.starts_with('-') && Path::new(arg).exists())
+    args.into_iter().skip(1).find_map(|arg| {
+        if arg.starts_with('-') {
+            return None;
+        }
+        let path = normalize_launch_arg(&arg);
+        Path::new(&path).exists().then_some(path)
+    })
+}
+
+fn normalize_launch_arg(arg: &str) -> String {
+    let trimmed = arg.trim().trim_matches('"');
+    if let Some(encoded) = trimmed.strip_prefix("file:") {
+        let decoded = percent_decode_str(encoded).decode_utf8_lossy().into_owned();
+        return file_uri_to_path(&decoded);
+    }
+    trimmed.to_string()
+}
+
+fn file_uri_to_path(after_scheme: &str) -> String {
+    let path = if let Some(rest) = after_scheme.strip_prefix("//") {
+        match rest.split_once('/') {
+            Some((host, path)) if host.is_empty() || host.eq_ignore_ascii_case("localhost") => {
+                format!("/{path}")
+            }
+            Some((host, path)) => format!("//{host}/{path}"),
+            None => rest.to_string(),
+        }
+    } else if after_scheme.starts_with('/') {
+        after_scheme.to_string()
+    } else {
+        format!("/{after_scheme}")
+    };
+    if path.len() >= 3 {
+        let bytes = path.as_bytes();
+        if bytes[0] == b'/' && bytes[1].is_ascii_alphabetic() && bytes[2] == b':' {
+            return path[1..].to_string();
+        }
+    }
+    path
 }
 
 fn file_name_title(path: &str) -> String {
@@ -150,12 +188,14 @@ fn query_file_associations(extensions: Vec<String>) -> AssociationQuery {
         let is_ours = mime_for_ext(&key)
             .map(association_is_ours)
             .unwrap_or(false);
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(target_os = "windows")]
+        let is_ours = windows_assoc::association_is_ours(&key);
+        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
         let is_ours = false;
         granted.insert(key, is_ours);
     }
     AssociationQuery {
-        os_managed: cfg!(target_os = "linux"),
+        os_managed: cfg!(any(target_os = "linux", target_os = "windows")),
         granted,
     }
 }
@@ -182,7 +222,12 @@ fn grant_file_associations(extensions: Vec<String>) -> Result<(), String> {
         write_mimeapps_list(|raw| grant_mime_defaults(&raw, desktop, &mimes))?;
         set_gio_defaults(desktop, &mimes);
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    {
+        let _ = &mimes;
+        windows_assoc::grant(&extensions)?;
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
         let _ = mimes;
     }
@@ -202,7 +247,11 @@ fn revoke_file_associations(extensions: Vec<String>) -> Result<(), String> {
         }
         write_mimeapps_list(|raw| revoke_mime_defaults(&raw, OUR_DESKTOP_IDS, &mimes))?;
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    {
+        windows_assoc::revoke(&extensions)?;
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
         let _ = extensions;
     }
@@ -593,6 +642,43 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_launch_arg_strips_file_uri_and_quotes() {
+        assert_eq!(
+            normalize_launch_arg(r#""file:///C:/Users/a/My%20Pic.jpg""#),
+            "C:/Users/a/My Pic.jpg"
+        );
+        assert_eq!(
+            normalize_launch_arg("file:///home/u/photo.jpg"),
+            "/home/u/photo.jpg"
+        );
+        assert_eq!(normalize_launch_arg(r"C:\tmp\clip.mp4"), r"C:\tmp\clip.mp4");
+    }
+
+    #[test]
+    fn first_file_arg_opens_file_uri_that_exists() {
+        let dir = std::env::temp_dir();
+        let file = dir.join("xfileviewer-launch-arg.jpg");
+        fs::write(&file, b"x").unwrap();
+        let uri = format!("file://{}", file.display());
+        let expected = file.to_string_lossy().into_owned();
+        let found = first_file_arg(["app".into(), uri]);
+        let _ = fs::remove_file(&file);
+        assert_eq!(found, Some(expected));
+    }
+
+    #[test]
+    fn windows_prog_id_is_recognized() {
+        assert_eq!(windows_assoc::prog_id("PNG"), "xfileviewer.png");
+        assert!(windows_assoc::is_ours("xfileviewer.png"));
+        assert!(windows_assoc::is_ours("com.xfileviewer.app.jpg"));
+        assert!(!windows_assoc::is_ours("AppX.Photos"));
+        assert_eq!(
+            windows_assoc::open_command(Path::new(r"C:\Program Files\xfileviewer.exe")),
+            r#""C:\Program Files\xfileviewer.exe" "%1""#,
+        );
+    }
 
     #[test]
     fn file_name_title_uses_basename() {
