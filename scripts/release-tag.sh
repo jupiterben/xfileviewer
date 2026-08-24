@@ -98,6 +98,18 @@ if (updated === cargo) {
   process.exit(1);
 }
 fs.writeFileSync(cargoPath, updated);
+
+const lockPath = 'src-tauri/Cargo.lock';
+const lock = fs.readFileSync(lockPath, 'utf8');
+const lockUpdated = lock.replace(
+  /(\[\[package\]\]\nname = "xfileviewer"\nversion = ")[^"]+(")/,
+  `$1${version}$2`
+);
+if (lockUpdated === lock) {
+  console.error('Failed to update version in src-tauri/Cargo.lock');
+  process.exit(1);
+}
+fs.writeFileSync(lockPath, lockUpdated);
 EOF
 
 PACKAGE_VERSION="$(node -p "require('./package.json').version")"
@@ -111,7 +123,7 @@ for candidate in "$PACKAGE_VERSION" "$TAURI_VERSION" "$CARGO_VERSION"; do
   fi
 done
 
-git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
 git commit -m "release: $TAG"
 git tag "$TAG"
 echo "Created tag $TAG"
