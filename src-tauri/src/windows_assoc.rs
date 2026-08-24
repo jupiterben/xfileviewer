@@ -158,7 +158,7 @@ fn write_prog_id(exe: &Path, ext: &str, pid: &str) -> Result<(), String> {
             )
             .map_err(|err| err.to_string())?;
         types
-            .set_value(format!(".{ext}"), &"")
+            .set_value(format!(".{ext}"), &String::new())
             .map_err(|err| err.to_string())?;
     }
     Ok(())
@@ -173,11 +173,12 @@ fn set_hkcu_ext_default(ext: &str, pid: &str) -> Result<(), String> {
     let (key, _) = hkcu
         .create_subkey_with_flags(format!(r"Software\Classes\{dotted}"), KEY_READ | KEY_WRITE)
         .map_err(|err| err.to_string())?;
-    key.set_value("", pid).map_err(|err| err.to_string())?;
+    key.set_value("", &pid).map_err(|err| err.to_string())?;
     let (owp, _) = key
         .create_subkey_with_flags("OpenWithProgids", KEY_READ | KEY_WRITE)
         .map_err(|err| err.to_string())?;
-    owp.set_value(pid, &"").map_err(|err| err.to_string())?;
+    owp.set_value(pid, &String::new())
+        .map_err(|err| err.to_string())?;
     Ok(())
 }
 
