@@ -18,6 +18,15 @@ describe("resolveLocalPath", () => {
     expect(resolveLocalPath("/notes/a.md", "/tmp/x.png")).toBe("/tmp/x.png");
   });
 
+  it("resolves windows drive and unc paths", () => {
+    expect(resolveLocalPath("C:\\notes\\a.md", "./img/a.png")).toBe(
+      "C:/notes/img/a.png",
+    );
+    expect(
+      resolveLocalPath("\\\\server\\share\\docs\\a.md", "./pic.png"),
+    ).toBe("//server/share/docs/pic.png");
+  });
+
   it("returns null for remote, data, and hash hrefs", () => {
     expect(resolveLocalPath("/notes/a.md", "https://ex.com/a.png")).toBeNull();
     expect(resolveLocalPath("/notes/a.md", "data:image/png;base64,xx")).toBeNull();

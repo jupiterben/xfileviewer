@@ -7,8 +7,10 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "check": "tsc --noEmit",
     "test": "vitest run",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "release": "bash scripts/release-tag.sh"
   },
   "dependencies": {
     "@mdit/plugin-katex": "^1.1.0",

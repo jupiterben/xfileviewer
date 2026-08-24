@@ -29,20 +29,29 @@ function stripQueryAndHash(href: string): string {
 }
 
 function isAbsolutePath(href: string): boolean {
-  return href.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(href);
+  return (
+    href.startsWith("/") ||
+    href.startsWith("\\\\") ||
+    /^[a-zA-Z]:[\\/]/.test(href)
+  );
 }
 
 function normalizePath(path: string): string {
   const unix = path.replace(/\\/g, "/");
-  const abs = unix.startsWith("/");
+  const unc = unix.startsWith("//");
+  const drive = /^[a-zA-Z]:/.test(unix);
   const out: string[] = [];
   for (const part of unix.split("/")) {
     if (part === "" || part === ".") continue;
     if (part === "..") {
+      if (unc && out.length <= 2) continue;
+      if (drive && out.length <= 1) continue;
       out.pop();
       continue;
     }
     out.push(part);
   }
-  return (abs ? "/" : "") + out.join("/");
+  if (unc) return "//" + out.join("/");
+  if (drive) return out.join("/");
+  return (unix.startsWith("/") ? "/" : "") + out.join("/");
 }

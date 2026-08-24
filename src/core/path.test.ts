@@ -16,6 +16,12 @@ describe("basename and dirname", () => {
     expect(basename("/home/u/img2.jpg")).toBe("img2.jpg");
     expect(dirname("/home/u/img2.jpg")).toBe("/home/u");
   });
+
+  it("splits windows paths", () => {
+    expect(basename("C:\\Users\\a\\img2.jpg")).toBe("img2.jpg");
+    expect(dirname("C:\\Users\\a\\img2.jpg")).toBe("C:\\Users\\a");
+    expect(extensionOf("C:\\Users\\a\\Cat.JPG")).toBe("jpg");
+  });
 });
 
 describe("naturalCompare", () => {

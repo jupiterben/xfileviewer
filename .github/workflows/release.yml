@@ -1,0 +1,104 @@
+# GitHub Actions: build and publish Windows, macOS and Linux packages for v* tags.
+# A manual run builds the same packages as workflow artifacts without creating a release.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            args: --bundles nsis
+            rust-targets: ''
+          - name: macOS Universal
+            os: macos-latest
+            args: --target universal-apple-darwin --bundles dmg
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - name: Linux x64
+            os: ubuntu-22.04
+            args: --bundles appimage,deb,rpm
+            rust-targets: ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Tauri system dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Configure public npm registry
+        shell: bash
+        run: npm config set registry https://registry.npmjs.org/
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Verify release version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          TAURI_VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          CARGO_VERSION="$(sed -n '/^\[package\]/,/^\[/s/^version = "\([^"]*\)"/\1/p' src-tauri/Cargo.toml | head -n 1)"
+
+          for version in "$PACKAGE_VERSION" "$TAURI_VERSION" "$CARGO_VERSION"; do
+            if [[ "$version" != "$TAG_VERSION" ]]; then
+              echo "::error::tag v$TAG_VERSION does not match package versions ($PACKAGE_VERSION, $TAURI_VERSION, $CARGO_VERSION)"
+              exit 1
+            fi
+          done
+
+          echo "Version verified: $TAG_VERSION"
+
+      - name: Build release artifacts
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('xfileviewer {0}', github.ref_name) || '' }}
+          generateReleaseNotes: true
+          releaseDraft: false
+          prerelease: false
+          uploadWorkflowArtifacts: true
+          workflowArtifactNamePattern: xfileviewer-[platform]-[arch]-[bundle]
+          args: ${{ matrix.args }}
