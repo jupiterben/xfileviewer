@@ -1,6 +1,6 @@
 [package]
 name = "xfileviewer"
-version = "0.1.2"
+version = "0.1.3"
 description = "Kind + Viewer desktop file opener"
 authors = ["you"]
 edition = "2021"
