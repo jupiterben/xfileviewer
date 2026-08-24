@@ -11,5 +11,6 @@
 - 安装：`./install.sh` 每次安装自动升高版本（`max(源码补丁+1, git提交数, 已安装+1)`），写入 package.json / tauri.conf.json / Cargo.toml；空状态与设置页显示 `v…`
 - 安装选包：按戳记版本匹配 `*_${version}_*.deb`（rpm：`*-${version}-*.rpm`），找不到则列出目录并失败；同版本 `apt --reinstall`；构建前清理旧 bundle
 - 验证：`npm test` 85 passed；适应尺寸缩放保持窗口中心（贴边时夹到工作区内）
+- GitHub CI/CD：PR 校验前端与 `cargo check`；`v*` tag / 手动 Release 打三端包（Linux 含 rpm）
 
 未做：图片墙、插件市场、原生解码插件、PlantUML / Markdown 导出。

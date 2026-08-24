@@ -19,3 +19,5 @@ Esc：查看/空状态关闭窗口退出；设置页先关掉设置；关联确�
 内置 Markdown 查看器支持 8 套主题和 4 档正文宽度。一键编译安装：`./install.sh`（每次安装自动升高补丁号，取 源码+1 / git 提交数 / 已安装+1 的最大值）。空状态和设置页显示当前版本。
 
 `install.sh` 安装时按戳记版本选包（`*_${version}_*.deb` / rpm 等价），不再用 `*.deb[0]`；同版本走 `apt-get install --reinstall`。构建前会清掉 deb/rpm 输出目录里的旧包，避免残留干扰。
+
+GitHub CI/CD 对齐 xlaunch：PR 跑 `.github/workflows/ci.yml`（npm ci + check/test/build + cargo check）；打 `v*` tag 或手动触发 `.github/workflows/release.yml`，出 Win NSIS / macOS Universal DMG / Linux AppImage+deb+rpm，并发布到 GitHub Release。发版用 `npm run release`（`scripts/release-tag.sh`），与本地 `install.sh` 自动升补丁是两条路径。
