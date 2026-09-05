@@ -139,7 +139,9 @@ body {
   z-index: 3;
 }
 
-.video-play {
+.video-play,
+.video-mute {
+  flex-shrink: 0;
   width: 36px;
   height: 32px;
   padding: 0;
@@ -160,6 +162,13 @@ body {
 .video-seek {
   flex: 1;
   min-width: 0;
+  accent-color: #8ab4f8;
+  cursor: pointer;
+}
+
+.video-volume {
+  width: clamp(48px, 12vw, 88px);
+  min-width: 48px;
   accent-color: #8ab4f8;
   cursor: pointer;
 }

@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { formatClock } from "../shell/formatClock";
 import type { Viewer, ViewerContext, ViewerHandle } from "../core/types";
 import { seekDeltaForKey, seekTime } from "./video/seek";
+import { loadAudioSettings, saveAudioSettings } from "./video/audioSettings";
 
 export function videoViewer(id: string, extensions: string[]): Viewer {
   return {
@@ -36,6 +37,10 @@ function mountVideo(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
   video.autoplay = true;
   video.preload = "auto";
   video.playsInline = true;
+  const audioSettings = loadAudioSettings(localStorage);
+  // Restore before assigning a source so autoplay cannot briefly play unmuted.
+  video.volume = audioSettings.volume;
+  video.muted = audioSettings.muted;
 
   const bar = document.createElement("div");
   bar.className = "video-bar";
@@ -63,12 +68,44 @@ function mountVideo(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
   durationEl.className = "video-time";
   durationEl.textContent = "0:00";
 
-  bar.append(playBtn, currentEl, seek, durationEl);
+  const muteBtn = document.createElement("button");
+  muteBtn.type = "button";
+  muteBtn.className = "video-mute";
+
+  const volume = document.createElement("input");
+  volume.type = "range";
+  volume.className = "video-volume";
+  volume.min = "0";
+  volume.max = "100";
+  volume.step = "1";
+  volume.setAttribute("aria-label", "音量");
+
+  bar.append(playBtn, currentEl, seek, durationEl, muteBtn, volume);
   wrap.append(video, bar);
   el.append(wrap);
 
   let cancelled = false;
   let seeking = false;
+  let lastAudibleVolume = audioSettings.lastAudibleVolume;
+
+  const syncVolume = () => {
+    const silent = video.muted || video.volume === 0;
+    const percent = Math.round(video.volume * 100);
+    muteBtn.textContent = silent ? "🔇" : "🔊";
+    muteBtn.title = silent ? "开启声音" : "静音";
+    muteBtn.setAttribute("aria-label", muteBtn.title);
+    muteBtn.setAttribute("aria-pressed", String(silent));
+    volume.value = String(percent);
+    volume.title = `音量 ${percent}%${video.muted ? "（已静音）" : ""}`;
+    volume.setAttribute("aria-valuetext", `${percent}%${video.muted ? "（已静音）" : ""}`);
+    if (video.volume > 0) lastAudibleVolume = video.volume;
+    saveAudioSettings(localStorage, {
+      volume: video.volume,
+      muted: video.muted,
+      lastAudibleVolume,
+    });
+  };
+  syncVolume();
 
   const syncPlayBtn = () => {
     playBtn.textContent = video.paused ? "▶" : "❚❚";
@@ -106,6 +143,7 @@ function mountVideo(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
   video.addEventListener("timeupdate", onTime);
   video.addEventListener("loadedmetadata", onMeta);
   video.addEventListener("durationchange", onTime);
+  video.addEventListener("volumechange", syncVolume);
   video.addEventListener(
     "error",
     () => {
@@ -118,6 +156,28 @@ function mountVideo(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
     if (video.paused) void video.play();
     else video.pause();
   });
+  muteBtn.addEventListener("click", () => {
+    if (video.muted || video.volume === 0) {
+      if (video.volume === 0) video.volume = lastAudibleVolume;
+      video.muted = false;
+    } else {
+      video.muted = true;
+    }
+    syncVolume();
+  });
+  volume.addEventListener("input", () => {
+    video.volume = Number(volume.value) / 100;
+    video.muted = false;
+    syncVolume();
+  });
+  // Keep native slider/button keys from triggering player or file navigation.
+  const onVolumeKey = (event: KeyboardEvent) => {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", " ", "Enter"].includes(event.key)) {
+      event.stopPropagation();
+    }
+  };
+  muteBtn.addEventListener("keydown", onVolumeKey);
+  volume.addEventListener("keydown", onVolumeKey);
   seek.addEventListener("pointerdown", () => {
     seeking = true;
   });
@@ -176,6 +236,7 @@ function mountVideo(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
       video.removeEventListener("timeupdate", onTime);
       video.removeEventListener("loadedmetadata", onMeta);
       video.removeEventListener("durationchange", onTime);
+      video.removeEventListener("volumechange", syncVolume);
       video.pause();
       video.removeAttribute("src");
       video.load();
