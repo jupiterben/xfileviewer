@@ -73,6 +73,22 @@ body {
   right: 10px;
 }
 
+.scan-status {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  max-width: 85%;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 65%);
+  color: #eee;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
 .dialog-actions button {
   background: #2f333d;
   color: inherit;

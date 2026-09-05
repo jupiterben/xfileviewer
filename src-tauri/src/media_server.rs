@@ -6,6 +6,19 @@ use std::thread;
 
 use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
 
+pub fn open_media(path: &str) -> std::io::Result<(File, std::fs::Metadata)> {
+    // Query the opened handle, so validation and streaming use the same object.
+    let file = File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("opened path is not a regular file: {metadata:?}"),
+        ));
+    }
+    Ok((file, metadata))
+}
+
 pub fn parse_byte_range(header: &str, len: u64) -> Option<(u64, u64)> {
     let spec = header
         .split(',')
@@ -156,23 +169,16 @@ fn handle_client(mut stream: TcpStream) {
         let _ = write_response(&mut stream, "400 Bad Request", &[], 0);
         return;
     };
-    let Ok(path) = Path::new(&raw_path).canonicalize() else {
-        let _ = write_response(&mut stream, "404 Not Found", &[], 0);
-        return;
-    };
-    if !path.is_file() {
-        let _ = write_response(&mut stream, "404 Not Found", &[], 0);
-        return;
-    }
-    let Ok(mut file) = File::open(&path) else {
-        let _ = write_response(&mut stream, "404 Not Found", &[], 0);
-        return;
-    };
-    let Ok(meta) = file.metadata() else {
-        return;
+    let (mut file, meta) = match open_media(&raw_path) {
+        Ok(opened) => opened,
+        Err(err) => {
+            eprintln!("[media_server] path={raw_path:?}, error={err}");
+            let _ = write_response(&mut stream, "404 Not Found", &[], 0);
+            return;
+        }
     };
     let len = meta.len();
-    let mime = content_type(&path.to_string_lossy());
+    let mime = content_type(&raw_path);
     let range_hdr = header_value(&req, "Range");
     let (status, start, end) = if let Some(h) = range_hdr {
         match parse_byte_range(h, len) {

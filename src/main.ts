@@ -1,4 +1,4 @@
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   LogicalPosition,
@@ -8,7 +8,7 @@ import {
 } from "@tauri-apps/api/window";
 import { PluginRegistry } from "./core/registry";
 import { basename } from "./core/path";
-import { buildSequence, move } from "./core/sequence";
+import { buildSequence, move, createSequenceAppender } from "./core/sequence";
 import { KIND_DOCUMENT, type Sequence, type ViewerHandle } from "./core/types";
 import {
   loadMediaWindowMode,
@@ -60,6 +60,10 @@ const assocText = document.querySelector<HTMLElement>("#assoc-text")!;
 const assocYes = document.querySelector<HTMLButtonElement>("#assoc-yes")!;
 const assocNo = document.querySelector<HTMLButtonElement>("#assoc-no")!;
 const workspace = document.querySelector<HTMLElement>(".workspace")!;
+const scanStatusEl = document.createElement("div");
+scanStatusEl.className = "scan-status";
+scanStatusEl.hidden = true;
+workspace.append(scanStatusEl);
 const settingsPage = document.querySelector<HTMLElement>("#settings")!;
 const settingsList = document.querySelector<HTMLElement>("#settings-list")!;
 const settingsBack = document.querySelector<HTMLButtonElement>("#settings-back")!;
@@ -71,6 +75,11 @@ const mediaWindowRadios = document.querySelectorAll<HTMLInputElement>(
 
 const registry = new PluginRegistry();
 let sequence: Sequence | null = null;
+let openRequest = 0;
+let scanning = false;
+let scanError = "";
+let scannedEntries = 0;
+let receivedFiles = 0;
 let handle: ViewerHandle | null = null;
 let settings: AssociationSettings = {
   granted: [],
@@ -102,6 +111,10 @@ function currentPath(): string | null {
 }
 
 function showEmpty(message: string) {
+  scanStatusEl.hidden = true;
+  openRequest += 1;
+  scanning = false;
+  scanError = "";
   closeSettingsView();
   destroyViewer();
   sequence = null;
@@ -287,14 +300,23 @@ function renderError(message: string) {
 function updateChrome() {
   const path = currentPath();
   if (!sequence || !path) {
+    scanStatusEl.hidden = true;
     prevBtn.disabled = true;
     nextBtn.disabled = true;
     setWindowTitle("");
     return;
   }
-  setWindowTitle(basename(path));
+  if (document.title !== basename(path)) setWindowTitle(basename(path));
   prevBtn.disabled = sequence.items.length < 2;
   nextBtn.disabled = sequence.items.length < 2;
+  const position = `${sequence.index + 1} / ${sequence.items.length}`;
+  const scanStatus = scanning ? " · 正在后台扫描目录" : scanError;
+  prevBtn.title = `上一个（${position}）${scanStatus}`;
+  nextBtn.title = `下一个（${position}）${scanStatus}`;
+  scanStatusEl.hidden = false;
+  scanStatusEl.textContent = scanError
+    ? `${position} · ${scanError}`
+    : `${position} · ${scanning ? "扫描中" : "扫描完成"}：已检查 ${scannedEntries} 项，收到 ${receivedFiles} 个文件`;
 }
 
 async function resizeWindowToContent(
@@ -336,7 +358,6 @@ async function resizeWindowToContent(
       height: outerSize.height,
     },
     nextOuter,
-    work,
   );
   await win.setSize(new LogicalSize(size.width, size.height));
   await win.setPosition(new LogicalPosition(pos.x, pos.y));
@@ -388,6 +409,11 @@ function mountCurrent() {
 }
 
 async function openPath(path: string) {
+  scannedEntries = 0;
+  receivedFiles = 0;
+  const request = ++openRequest;
+  scanning = false;
+  scanError = "";
   closeSettingsView();
   setWindowTitle(basename(path));
   const kindId = registry.kindFor(path);
@@ -396,10 +422,9 @@ async function openPath(path: string) {
     return;
   }
   await maybePromptAssociation(path);
-  const folder = await invoke<string>("parent_dir", { path });
-  const files = await invoke<string[]>("list_dir_files", { dir: folder });
+  if (request !== openRequest) return;
   const next = buildSequence(
-    files,
+    [],
     kindId,
     registry.extensionsForKind(kindId),
     path,
@@ -410,13 +435,40 @@ async function openPath(path: string) {
   }
   destroyViewer();
   sequence = next;
+  scanning = true;
   lastContentSize = null;
   if (shouldRememberWindowSize(kindId, mediaWindowMode)) {
     await restoreKindWindow(kindId);
   }
+  if (request !== openRequest) return;
   mountCurrent();
+  void scanSequence(path, kindId, request);
 }
 
+async function scanSequence(path: string, kindId: string, request: number) {
+  try {
+    const folder = await invoke<string>("parent_dir", { path });
+    if (request !== openRequest || !sequence) return;
+    const append = createSequenceAppender(sequence, registry.extensionsForKind(kindId));
+    const onBatch = new Channel<{ files: string[]; scanned: number; done: boolean }>();
+    onBatch.onmessage = (batch) => {
+      if (request !== openRequest || !sequence) return;
+      scannedEntries = batch.scanned;
+      receivedFiles += batch.files.length;
+      for (const file of batch.files) append(sequence, file);
+      if (batch.done) scanning = false;
+      updateChrome();
+    };
+    console.info("[sequence] starting scan", { folder, kindId });
+    await invoke("list_dir_files", { dir: folder, onBatch });
+  } catch (err) {
+    if (request !== openRequest) return;
+    console.error("[sequence] scan failed", { path, error: err });
+    scanError = `目录扫描失败：${String(err)}`;
+    scanning = false;
+    updateChrome();
+  }
+}
 async function restoreKindWindow(kindId: string) {
   const size =
     kindId === KIND_DOCUMENT
@@ -483,8 +535,16 @@ async function setMediaWindowMode(mode: MediaWindowMode) {
 
 function go(direction: 1 | -1) {
   if (!sequence || sequence.items.length === 0) return;
+  const previousPath = currentPath();
   destroyViewer();
   sequence = move(sequence, direction);
+  console.debug("[sequence] navigate", {
+    direction,
+    from: previousPath,
+    to: currentPath(),
+    index: sequence.index,
+    count: sequence.items.length,
+  });
   mountCurrent();
 }
 
@@ -536,6 +596,16 @@ for (const input of mediaWindowRadios) {
 }
 settingsBack.addEventListener("click", () => closeSettingsView());
 settingsApply.addEventListener("click", () => void applyAssociations());
+document.addEventListener("mousedown", (event) => {
+  if (event.button !== 0 || overlay.hidden === false || !settingsPage.hidden) return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (target.closest('button, input, select, textarea, a, label, [role="button"], [contenteditable="true"]')) return;
+  event.preventDefault();
+  void getCurrentWindow().startDragging().catch((error) => {
+    console.error("Unable to drag window", error);
+  });
+});
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     const action = escAction(overlay.hidden === false, !settingsPage.hidden);

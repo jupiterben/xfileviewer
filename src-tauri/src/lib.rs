@@ -1,4 +1,5 @@
 mod media_server;
+mod directory;
 
 use std::collections::HashMap;
 use std::fs;
@@ -30,6 +31,7 @@ struct WindowSize {
 
 type WindowSizes = HashMap<String, WindowSize>;
 
+#[cfg(any(target_os = "linux", test))]
 const OUR_DESKTOP_IDS: &[&str] = &[
     "xfileviewer.desktop",
     "com.xfileviewer.app.desktop",
@@ -86,16 +88,76 @@ fn parent_dir(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn list_dir_files(dir: String) -> Result<Vec<String>, String> {
-    let mut files = Vec::new();
-    for entry in fs::read_dir(&dir).map_err(|err| err.to_string())? {
-        let entry = entry.map_err(|err| err.to_string())?;
-        let path = entry.path();
-        if path.is_file() {
-            files.push(path.to_string_lossy().into_owned());
+async fn list_dir_files(
+    dir: String,
+    on_batch: tauri::ipc::Channel<ScanBatch>,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        scan_dir_files(&dir, |batch| on_batch.send(batch).map_err(|err| format!("[发送扫描消息] {err}")))
+    })
+        .await
+        .map_err(|err| format!("目录扫描失败：{err}"))?
+}
+
+#[derive(Clone, Serialize)]
+struct ScanBatch {
+    files: Vec<String>,
+    scanned: usize,
+    done: bool,
+}
+
+fn scan_io_error(stage: &str, path: &str, err: std::io::Error) -> String {
+    let code = err.raw_os_error()
+        .map(|code| format!("0x{:08X}", code as u32))
+        .unwrap_or_else(|| "无系统错误码".into());
+    let message = format!("[{stage}] {path}：{err}（{code}）");
+    eprintln!("[list_dir_files] {message}");
+    message
+}
+
+fn scan_dir_files(
+    dir: &str,
+    mut emit: impl FnMut(ScanBatch) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut found = 0;
+    let mut scanned = 0;
+    let mut system_files = 0;
+    let mut non_files = 0;
+    let mut last_progress = std::time::Instant::now();
+    eprintln!("[list_dir_files] starting dir={dir:?}");
+    emit(ScanBatch { files: Vec::new(), scanned: 0, done: false })?;
+    for entry in directory::read_dir(dir).map_err(|err| scan_io_error("打开目录", dir, err))? {
+        if last_progress.elapsed() >= std::time::Duration::from_millis(250) {
+            emit(ScanBatch { files: Vec::new(), scanned, done: false })?;
+            last_progress = std::time::Instant::now();
+        }
+        let entry = entry.map_err(|err| scan_io_error("枚举目录条目", dir, err))?;
+        scanned += 1;
+        let name = &entry.name;
+        let name = name.to_string_lossy();
+        // AppleDouble sidecars retain the media extension but contain metadata.
+        if name.starts_with("._")
+            || name.eq_ignore_ascii_case(".DS_Store")
+            || name.eq_ignore_ascii_case("Thumbs.db")
+            || name.eq_ignore_ascii_case("ehthumbs.db")
+            || name.eq_ignore_ascii_case("desktop.ini")
+        {
+            system_files += 1;
+            continue;
+        }
+        let path = entry.path;
+        if entry.is_file {
+            emit(ScanBatch { files: vec![path.to_string_lossy().into_owned()], scanned, done: false })?;
+            found += 1;
+        } else {
+            non_files += 1;
         }
     }
-    Ok(files)
+    eprintln!(
+        "[list_dir_files] dir={dir:?}, scanned={scanned}, files={}, system_files={system_files}, non_files={non_files}",
+        found
+    );
+    emit(ScanBatch { files: Vec::new(), scanned, done: true })
 }
 
 #[tauri::command]
@@ -231,6 +293,7 @@ fn mime_for_ext(ext: &str) -> Option<&'static str> {
     })
 }
 
+#[cfg(target_os = "linux")]
 fn association_is_ours(mime: &str) -> bool {
     if let Ok(raw) = fs::read_to_string(mimeapps_list_path()) {
         if let Some(desktop) = mimeapps_default_desktop(&raw, mime) {
@@ -244,18 +307,22 @@ fn association_is_ours(mime: &str) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn desktop_is_ours(name: &str) -> bool {
     OUR_DESKTOP_IDS.contains(&name)
 }
 
+#[cfg(target_os = "linux")]
 fn desktop_is_active(name: &str) -> bool {
     desktop_is_active_with(name, &installed_desktop_ids())
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn desktop_is_active_with(name: &str, installed: &[&str]) -> bool {
     desktop_is_ours(name) && installed.contains(&name)
 }
 
+#[cfg(target_os = "linux")]
 fn installed_desktop_ids() -> Vec<&'static str> {
     OUR_DESKTOP_IDS
         .iter()
@@ -264,10 +331,12 @@ fn installed_desktop_ids() -> Vec<&'static str> {
         .collect()
 }
 
+#[cfg(target_os = "linux")]
 fn desktop_file_exists(id: &str) -> bool {
     application_dirs().iter().any(|dir| dir.join(id).is_file())
 }
 
+#[cfg(target_os = "linux")]
 fn application_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Ok(home) = std::env::var("HOME") {
@@ -278,6 +347,7 @@ fn application_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+#[cfg(target_os = "linux")]
 fn preferred_desktop_id() -> &'static str {
     OUR_DESKTOP_IDS
         .iter()
@@ -286,6 +356,7 @@ fn preferred_desktop_id() -> &'static str {
         .unwrap_or(OUR_DESKTOP_IDS[0])
 }
 
+#[cfg(target_os = "linux")]
 fn ensure_user_desktop_file() -> Result<(), String> {
     let Some(home) = std::env::var("HOME").ok() else {
         return Ok(());
@@ -312,6 +383,7 @@ MimeType=image/jpeg;image/png;image/gif;image/webp;image/bmp;image/svg+xml;video
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
 fn set_gio_defaults(desktop: &str, mimes: &[String]) {
     for mime in mimes {
         let _ = std::process::Command::new("gio")
@@ -320,6 +392,7 @@ fn set_gio_defaults(desktop: &str, mimes: &[String]) {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn write_mimeapps_list(edit: impl FnOnce(String) -> String) -> Result<(), String> {
     let path = mimeapps_list_path();
     let raw = if path.exists() {
@@ -337,6 +410,7 @@ fn write_mimeapps_list(edit: impl FnOnce(String) -> String) -> Result<(), String
     fs::write(path, next).map_err(|err| err.to_string())
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn mimeapps_default_desktop(text: &str, mime: &str) -> Option<String> {
     let mut section = String::new();
     for line in text.lines() {
@@ -363,6 +437,7 @@ fn mimeapps_default_desktop(text: &str, mime: &str) -> Option<String> {
     None
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn grant_mime_defaults(text: &str, desktop: &str, mimes: &[String]) -> String {
     if mimes.is_empty() {
         return text.to_string();
@@ -417,6 +492,7 @@ fn grant_mime_defaults(text: &str, desktop: &str, mimes: &[String]) -> String {
     joined
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn append_remaining_defaults(
     out: &mut Vec<String>,
     desktop: &str,
@@ -430,6 +506,7 @@ fn append_remaining_defaults(
     }
 }
 
+#[cfg(target_os = "linux")]
 fn query_default_desktop(mime: &str) -> Option<String> {
     let output = std::process::Command::new("xdg-mime")
         .args(["query", "default", mime])
@@ -446,6 +523,7 @@ fn query_default_desktop(mime: &str) -> Option<String> {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn mimeapps_list_path() -> PathBuf {
     if let Ok(dir) = std::env::var("XDG_CONFIG_HOME") {
         if !dir.is_empty() {
@@ -455,12 +533,14 @@ fn mimeapps_list_path() -> PathBuf {
     dirs_home().join(".config/mimeapps.list")
 }
 
+#[cfg(target_os = "linux")]
 fn dirs_home() -> PathBuf {
     std::env::var("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("."))
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn revoke_mime_defaults(text: &str, desktops: &[&str], mimes: &[String]) -> String {
     let mime_set: std::collections::HashSet<&str> =
         mimes.iter().map(String::as_str).collect();
@@ -518,9 +598,13 @@ fn revoke_mime_defaults(text: &str, desktops: &[&str], mimes: &[String]) -> Stri
 
 #[tauri::command]
 fn video_stream_url(state: tauri::State<MediaServer>, path: String) -> Result<String, String> {
-    if !Path::new(&path).is_file() {
-        return Err("video file not found".into());
-    }
+    eprintln!("[video_stream_url] path={path:?}");
+    let (_file, metadata) = media_server::open_media(&path).map_err(|err| {
+        let message = format!("无法打开视频文件：{path}\n系统错误：{err}");
+        eprintln!("[video_stream_url] {message}");
+        message
+    })?;
+    eprintln!("[video_stream_url] opened path={path:?}, size={}", metadata.len());
     Ok(media_server::stream_url(state.port, &path))
 }
 
@@ -593,6 +677,58 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn directory_scan_streams_files_and_filters_system_entries() {
+        let root = std::env::temp_dir().join(format!("xfileviewer-scan-{}-{}",
+            std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("正常视频.mp4"), b"test").unwrap();
+        fs::write(root.join("._正常视频.mp4"), b"metadata").unwrap();
+        fs::create_dir(root.join("folder.mp4")).unwrap();
+        let result = || {
+            let mut batches = Vec::new();
+            scan_dir_files(root.to_str().unwrap(), |batch| { batches.push(batch); Ok(()) }).unwrap();
+            assert!(batches.last().unwrap().done);
+            assert_eq!(batches.last().unwrap().scanned, 3);
+            let discoveries: Vec<_> = batches.iter().filter(|batch| !batch.files.is_empty()).collect();
+            assert_eq!(discoveries.len(), 1);
+            assert!(!discoveries[0].done);
+            assert_eq!(discoveries[0].files, vec![root.join("正常视频.mp4").to_string_lossy().into_owned()]);
+            assert_eq!(directory::read_dir(root.join("folder.mp4").to_str().unwrap()).unwrap().count(), 0);
+            assert!(directory::read_dir(root.join("missing").to_str().unwrap()).is_err());
+        };
+        // Only this test's uniquely created temporary fixture is removed.
+        let outcome = std::panic::catch_unwind(result);
+        fs::remove_file(root.join("正常视频.mp4")).unwrap();
+        fs::remove_file(root.join("._正常视频.mp4")).unwrap();
+        fs::remove_dir(root.join("folder.mp4")).unwrap();
+        fs::remove_dir(&root).unwrap();
+        if let Err(panic) = outcome { std::panic::resume_unwind(panic); }
+    }
+
+    #[test]
+    #[ignore = "Requires an explicitly supplied SMB directory"]
+    fn directory_scan_network_probe() {
+        let dir = std::env::var("XFILEVIEWER_TEST_DIR").expect("set XFILEVIEWER_TEST_DIR");
+        let mut discovered = 0;
+        let mut completed = false;
+        let mut seen = std::collections::HashSet::new();
+        scan_dir_files(&dir, |batch| {
+            assert!(batch.files.len() <= 1);
+            for file in batch.files {
+                assert!(seen.insert(file));
+                discovered += 1;
+            }
+            if batch.done {
+                completed = true;
+                println!("NETWORK SCAN OK: scanned={}, emitted={discovered}", batch.scanned);
+            }
+            Ok(())
+        }).unwrap();
+        assert!(completed);
+        assert!(discovered > 1);
+    }
 
     #[test]
     fn file_name_title_uses_basename() {

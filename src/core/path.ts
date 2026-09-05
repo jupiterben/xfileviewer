@@ -17,6 +17,8 @@ export function dirname(path: string): string {
   return path.slice(0, i);
 }
 
+const naturalCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
 export function naturalCompare(a: string, b: string): number {
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+  return naturalCollator.compare(a, b);
 }

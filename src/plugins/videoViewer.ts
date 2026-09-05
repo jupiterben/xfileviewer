@@ -118,10 +118,6 @@ function mountVideo(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
     if (video.paused) void video.play();
     else video.pause();
   });
-  video.addEventListener("click", () => {
-    if (video.paused) void video.play();
-    else video.pause();
-  });
   seek.addEventListener("pointerdown", () => {
     seeking = true;
   });
@@ -140,6 +136,14 @@ function mountVideo(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
     if (document.querySelector<HTMLElement>("#assoc-overlay")?.hidden === false) {
       return;
     }
+    if (event.key === " ") {
+      event.preventDefault();
+      if (!event.repeat) {
+        if (video.paused) void video.play();
+        else video.pause();
+      }
+      return;
+    }
     const delta = seekDeltaForKey(event.key);
     if (delta == null) return;
     event.preventDefault();
@@ -150,10 +154,12 @@ function mountVideo(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
 
   void (async () => {
     try {
+      console.debug("[video] requesting stream", { path: ctx.path });
       const url = await invoke<string>("video_stream_url", { path: ctx.path });
       if (cancelled) return;
       video.src = url;
     } catch (err) {
+      console.error("[video] stream request failed", { path: ctx.path, error: err });
       if (!cancelled) {
         ctx.onError(err instanceof Error ? err.message : String(err));
       }

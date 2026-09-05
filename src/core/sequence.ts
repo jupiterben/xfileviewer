@@ -49,3 +49,32 @@ export function move(seq: Sequence, direction: 1 | -1): Sequence {
   const index = direction === 1 ? nextIndex(seq) : prevIndex(seq);
   return { ...seq, index };
 }
+
+export function preserveCurrentPath(seq: Sequence, path: string): Sequence {
+  const index = seq.items.findIndex((item) => samePath(item, path));
+  return index < 0 ? seq : { ...seq, index };
+}
+
+// Apply ordered worker insertions without copying the entire growing list.
+export function insertSequenceItem(seq: Sequence, file: string, index: number): void {
+  seq.items.splice(index, 0, file);
+  if (index <= seq.index) seq.index += 1;
+}
+
+export function createSequenceAppender(seq: Sequence, extensions: Set<string>) {
+  const key = (path: string) => path.split("\\").join("/");
+  const seen = new Set(seq.items.map(key));
+  return (current: Sequence, file: string): boolean => {
+    if (!extensions.has(extensionOf(file)) || seen.has(key(file))) return false;
+    seen.add(key(file));
+    let low = 0;
+    let high = current.items.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (naturalCompare(basename(current.items[mid]), basename(file)) <= 0) low = mid + 1;
+      else high = mid;
+    }
+    insertSequenceItem(current, file, low);
+    return true;
+  };
+}
