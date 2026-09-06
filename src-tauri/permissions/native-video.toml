@@ -1,0 +1,19 @@
+# Video playback pipeline (libmpv native decoder + HLS transcode + probes).
+# Without this permission Tauri's ACL rejects the invokes with
+# "<command> not allowed. Command not found" and the viewer silently
+# falls back to the WebView <video> path.
+[[permission]]
+identifier = "allow-video-pipeline"
+description = "Video playback: libmpv native decoder windows, HLS transcode control, and decoder availability probes"
+commands.allow = [
+  "native_video_available",
+  "native_video_open",
+  "native_video_overlay",
+  "native_video_layout",
+  "native_video_control",
+  "native_video_status",
+  "native_video_close",
+  "ffmpeg_available",
+  "hls_open",
+  "hls_close"
+]

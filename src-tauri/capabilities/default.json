@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "description": "Capability for the main window and the transparent video overlay webview",
+  "windows": ["main", "video-overlay"],
   "permissions": [
     "core:default",
     "core:event:default",
@@ -16,7 +16,9 @@
     "core:window:allow-inner-size",
     "core:window:allow-scale-factor",
     "core:window:allow-current-monitor",
+    "core:webview:allow-set-webview-focus",
     "opener:default",
-    "allow-shell-commands"
+    "allow-shell-commands",
+    "allow-video-pipeline"
   ]
 }

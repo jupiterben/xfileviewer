@@ -8,6 +8,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+.native-cache/
+src-tauri/resources/mpv/
 dist
 dist-ssr
 *.local

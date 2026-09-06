@@ -34,9 +34,10 @@ mod windows {
         Foundation::{ERROR_NO_MORE_FILES, HANDLE, INVALID_HANDLE_VALUE},
         Storage::FileSystem::{
             FindClose, FindExInfoBasic, FindExInfoStandard, FindExSearchNameMatch,
-            FindFirstFileExW, FindNextFileW, FILE_ATTRIBUTE_DIRECTORY, FINDEX_INFO_LEVELS,
-            FIND_FIRST_EX_LARGE_FETCH, WIN32_FIND_DATAW,
+            FindFirstFileExW, FindNextFileW, GetDriveTypeW, FILE_ATTRIBUTE_DIRECTORY,
+            FINDEX_INFO_LEVELS, FIND_FIRST_EX_LARGE_FETCH, WIN32_FIND_DATAW,
         },
+        System::WindowsProgramming::DRIVE_REMOTE,
     };
 
     pub struct ReadDir {
@@ -74,6 +75,15 @@ mod windows {
                     if !retryable || index == modes.len() - 1 {
                         return Err(err);
                     }
+                    // Mapped network drives (SMB) can fail all four modes when the
+                    // session is briefly renegotiating; a short backoff between
+                    // attempts gives the redirector time to recover instead of
+                    // burning through every mode inside the same failure window.
+                    if !cfg!(test) {
+                        std::thread::sleep(std::time::Duration::from_millis(
+                            200 * u64::from(index as u16) + 200,
+                        ));
+                    }
                 }
             }
         }
@@ -92,12 +102,26 @@ mod windows {
         }
         // Preserve support for long drive and UNC paths without resolving SMB
         // metadata through canonicalize().
+        // The `\\?\` prefix is NOT reliable for mapped network drive letters
+        // (e.g. `\\?\Y:\...` where Y: is an SMB share) — the redirector cannot
+        // resolve the final server path and the call fails with
+        // ERROR_DIRECTORY (267). Ask the OS whether this drive is remote and
+        // skip the prefix for mapped drives; true UNC inputs keep the
+        // `\\?\UNC\` form, which is always safe.
         if wide.len() >= 260 && !wide.starts_with(&[92, 92, 63, 92]) {
-            wide = if wide.starts_with(&[92, 92]) {
-                [vec![92, 92, 63, 92, 85, 78, 67, 92], wide[2..].to_vec()].concat()
-            } else {
-                [vec![92, 92, 63, 92], wide].concat()
-            };
+            let is_remote_drive = wide.len() >= 2
+                && wide[1] == b':' as u16
+                && {
+                    let root = [wide[0], wide[1], b'\\' as u16, 0];
+                    unsafe { GetDriveTypeW(root.as_ptr()) == DRIVE_REMOTE }
+                };
+            if !is_remote_drive {
+                wide = if wide.starts_with(&[92, 92]) {
+                    [vec![92, 92, 63, 92, 85, 78, 67, 92], wide[2..].to_vec()].concat()
+                } else {
+                    [vec![92, 92, 63, 92], wide].concat()
+                };
+            }
         }
         wide.push(0);
         // LARGE_FETCH succeeds on the macOS SMB directories where the default

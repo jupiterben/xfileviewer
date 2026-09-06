@@ -1,4 +1,5 @@
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   LogicalPosition,
@@ -9,7 +10,7 @@ import {
 import { PluginRegistry } from "./core/registry";
 import { basename } from "./core/path";
 import { buildSequence, move, createSequenceAppender } from "./core/sequence";
-import { KIND_DOCUMENT, type Sequence, type ViewerHandle } from "./core/types";
+import { KIND_DOCUMENT, KIND_VIDEO, type Sequence, type ViewerHandle } from "./core/types";
 import {
   loadMediaWindowMode,
   mediaWindowModeLabel,
@@ -21,6 +22,7 @@ import {
   type MediaWindowMode,
 } from "./shell/mediaWindow";
 import { escAction } from "./shell/escAction";
+import { markOverlayReady } from "./shell/overlayReadiness";
 import { sequenceStepForKey } from "./shell/sequenceKeys";
 import { builtinPlugins } from "./plugins/builtin";
 import { loadExternalPlugins } from "./plugins/external";
@@ -141,9 +143,25 @@ function showEmpty(message: string) {
   host.append(wrap);
   lastContentSize = null;
   setWindowTitle("");
-  prevBtn.disabled = true;
-  nextBtn.disabled = true;
+  syncNavButtons(true);
   updateMediaWindowModeUi();
+}
+
+/**
+ * Mirrors the window-level prev/next state onto the video control bar's nav
+ * buttons. The bar buttons replace the floating arrows while a video is on
+ * screen (the native backend draws over them), so they must stay in sync.
+ */
+function syncNavButtons(disabled: boolean, meta?: { position: string; scanStatus: string }) {
+  const videoPrev = host.querySelector<HTMLButtonElement>(".video-nav-prev");
+  const videoNext = host.querySelector<HTMLButtonElement>(".video-nav-next");
+  if (!videoPrev || !videoNext) return;
+  videoPrev.disabled = disabled;
+  videoNext.disabled = disabled;
+  if (meta) {
+    videoPrev.title = `上一个（${meta.position}）${meta.scanStatus}`;
+    videoNext.title = `下一个（${meta.position}）${meta.scanStatus}`;
+  }
 }
 
 function closeSettingsView() {
@@ -285,6 +303,22 @@ function destroyViewer() {
   }
   handle = null;
   lastContentSize = null;
+  dockWindowModeToggle(false);
+}
+
+/**
+ * The window-mode toggle normally floats in the top-right corner, which the
+ * native video backend covers with its HWND. While a video is mounted it
+ * docks into the control bar (below the video surface, never covered);
+ * otherwise it returns to the workspace corner.
+ */
+function dockWindowModeToggle(dock: boolean) {
+  const bar = dock ? host.querySelector(".video-bar") : null;
+  if (bar) {
+    bar.append(mediaWindowBtn);
+  } else {
+    workspace.append(mediaWindowBtn);
+  }
 }
 
 function renderError(message: string) {
@@ -303,16 +337,19 @@ function updateChrome() {
     scanStatusEl.hidden = true;
     prevBtn.disabled = true;
     nextBtn.disabled = true;
+    syncNavButtons(true);
     setWindowTitle("");
     return;
   }
   if (document.title !== basename(path)) setWindowTitle(basename(path));
-  prevBtn.disabled = sequence.items.length < 2;
-  nextBtn.disabled = sequence.items.length < 2;
+  const navDisabled = sequence.items.length < 2;
+  prevBtn.disabled = navDisabled;
+  nextBtn.disabled = navDisabled;
   const position = `${sequence.index + 1} / ${sequence.items.length}`;
   const scanStatus = scanning ? " · 正在后台扫描目录" : scanError;
   prevBtn.title = `上一个（${position}）${scanStatus}`;
   nextBtn.title = `下一个（${position}）${scanStatus}`;
+  syncNavButtons(navDisabled, { position, scanStatus });
   scanStatusEl.hidden = false;
   scanStatusEl.textContent = scanError
     ? `${position} · ${scanError}`
@@ -382,6 +419,10 @@ function mountCurrent() {
       src: convertFileSrc(path),
       onEnded: () => go(1),
       onError: (message) => renderError(message),
+      onNavigate: (step) => go(step),
+      onVolumePopup: (show, pos) => {
+        void emit("video-overlay-cmd", { show, ...pos }).catch(() => undefined);
+      },
       onContentSize: (width, height, chrome) => {
         lastContentSize = {
           width,
@@ -404,6 +445,7 @@ function mountCurrent() {
   } catch (err) {
     renderError(err instanceof Error ? err.message : String(err));
   }
+  dockWindowModeToggle(sequence.kindId === KIND_VIDEO);
   updateChrome();
   updateMediaWindowModeUi();
 }
@@ -667,6 +709,29 @@ async function boot() {
       void openPath(event.payload.paths[0]);
     }
   });
+  // While a native (libmpv) video is on screen, the video windows sit on top
+  // of the WebView and the webview-level drag-drop handler never sees drops
+  // over that area. native_video.rs registers its own OLE drop target there
+  // and replays the dropped paths through this event. The overlay webview
+  // (above the video) forwards its drops through the same channel.
+  await listen<string[]>("video-file-drop", (event) => {
+    const path = event.payload[0];
+    if (typeof path === "string" && path) void openPath(path);
+  });
+  // The overlay webview covers the video surface, so wheel paging and Escape
+  // there are forwarded back into this webview's handlers.
+  await listen<{ deltaY: number }>("video-overlay-wheel", (event) => {
+    if (overlay.hidden === false || !settingsPage.hidden || !sequence) return;
+    if (!kindUsesWheelPaging(sequence.kindId)) return;
+    const dir = wheelPage(event.payload?.deltaY ?? 0);
+    if (dir) go(dir);
+  });
+  await listen("video-overlay-closed", () => {
+    void getCurrentWebview().setFocus().catch(() => undefined);
+  });
+  // Handshake from the overlay webview: it fires this once its popup
+  // listeners are live, unblocking the popupMode switch in videoViewer.
+  await listen("video-overlay-ready", () => markOverlayReady());
   const launch = await invoke<string | null>("take_launch_path");
   if (launch) {
     await openPath(launch);
@@ -676,4 +741,12 @@ async function boot() {
   updateMediaWindowModeUi();
 }
 
-void boot();
+// The "video-overlay" webview loads the same SPA, but only renders floating
+// popups above the native video surface (see shell/videoOverlayPage.ts).
+if (getCurrentWebview().label === "video-overlay") {
+  void import("./shell/videoOverlayPage")
+    .then((m) => m.bootVideoOverlay())
+    .catch((err) => console.error("[video-overlay] boot failed", err));
+} else {
+  void boot();
+}

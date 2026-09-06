@@ -1,10 +1,18 @@
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
+
+/// Shared HLS cache root, used by `handle_client` to resolve `/hls/...`
+/// requests into absolute file paths under the per-session directories
+/// owned by `hls_transcoder`. The value is filled in by the Tauri setup
+/// hook (it needs `app.path().app_cache_dir()`), so the server thread
+/// reads it lazily on every request.
+pub type HlsCacheRoot = Arc<Mutex<Option<PathBuf>>>;
 
 pub fn open_media(path: &str) -> std::io::Result<(File, std::fs::Metadata)> {
     // Query the opened handle, so validation and streaming use the same object.
@@ -141,7 +149,7 @@ fn copy_range(file: &mut File, stream: &mut TcpStream, start: u64, end: u64) -> 
     Ok(())
 }
 
-fn handle_client(mut stream: TcpStream) {
+fn handle_client(mut stream: TcpStream, hls_root: HlsCacheRoot) {
     let Ok(req) = read_headers(&mut stream) else {
         return;
     };
@@ -151,6 +159,14 @@ fn handle_client(mut stream: TcpStream) {
     let mut parts = first.split_whitespace();
     let method = parts.next().unwrap_or("");
     let target = parts.next().unwrap_or("");
+
+    // HLS path takes precedence over the legacy /media handler because the
+    // frontend always sets `path=` for /media; any missing path means the
+    // request is for a different route.
+    if target.starts_with("/hls/") {
+        serve_hls(&mut stream, method, target, &hls_root);
+        return;
+    }
 
     if method == "OPTIONS" {
         let _ = write!(
@@ -206,13 +222,22 @@ fn handle_client(mut stream: TcpStream) {
     let _ = copy_range(&mut file, &mut stream, start, end);
 }
 
+/// Convenience entry point: start the media server with a deferred HLS
+/// root. Kept for external integrations that do not need to inject the
+/// shared cache directory.
+#[allow(dead_code)]
 pub fn start() -> std::io::Result<u16> {
+    start_with_hls_root(Arc::new(Mutex::new(None)))
+}
+
+pub fn start_with_hls_root(hls_root: HlsCacheRoot) -> std::io::Result<u16> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let port = listener.local_addr()?.port();
     listener.set_nonblocking(false)?;
     thread::spawn(move || {
         for stream in listener.incoming().flatten() {
-            thread::spawn(move || handle_client(stream));
+            let root = hls_root.clone();
+            thread::spawn(move || handle_client(stream, root));
         }
     });
     Ok(port)
@@ -223,6 +248,80 @@ pub fn stream_url(port: u16, path: &str) -> String {
         "http://127.0.0.1:{port}/media?path={}",
         utf8_percent_encode(path, NON_ALPHANUMERIC)
     )
+}
+
+fn hls_mime(path: &Path) -> &'static str {
+    // Match by suffix on the file name; `.m3u8` and `.ts` are the only
+    // formats the HLS muxer emits here.
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if name.ends_with(".m3u8") {
+        "application/vnd.apple.mpegurl"
+    } else if name.ends_with(".ts") {
+        "video/mp2t"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+fn serve_hls(stream: &mut TcpStream, method: &str, target: &str, hls_root: &HlsCacheRoot) {
+    if method == "OPTIONS" {
+        let _ = write!(
+            stream,
+            "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: range, content-type\r\nAccess-Control-Allow-Methods: GET, HEAD, OPTIONS\r\nConnection: close\r\n\r\n"
+        );
+        return;
+    }
+    if method != "GET" && method != "HEAD" {
+        let _ = write_response(stream, "405 Method Not Allowed", &[], 0);
+        return;
+    }
+    // Strip query string and "/hls/" prefix, then split "<session>/<rest>".
+    let path_part = target.split_once('?').map_or(target, |(p, _)| p);
+    let stripped = path_part.strip_prefix("/hls/").unwrap_or("");
+    let (session, rest) = match stripped.split_once('/') {
+        Some((s, r)) => (s, r),
+        None => (stripped, ""),
+    };
+    let cache_root = match hls_root.lock() {
+        Ok(guard) => match guard.as_ref() {
+            Some(p) => p.clone(),
+            None => {
+                let _ = write_response(stream, "503 Service Unavailable", &[], 0);
+                return;
+            }
+        },
+        Err(_) => {
+            let _ = write_response(stream, "500 Internal Server Error", &[], 0);
+            return;
+        }
+    };
+    let resolved = match crate::hls_transcoder::resolve_hls_path(&cache_root, session, rest) {
+        Some(p) => p,
+        None => {
+            let _ = write_response(stream, "404 Not Found", &[], 0);
+            return;
+        }
+    };
+    let meta = match std::fs::metadata(&resolved) {
+        Ok(m) if m.is_file() => m,
+        _ => {
+            let _ = write_response(stream, "404 Not Found", &[], 0);
+            return;
+        }
+    };
+    let len = meta.len();
+    let mime = hls_mime(&resolved);
+    let extra = [("Content-Type", mime.to_string())];
+    if write_response(stream, "200 OK", &extra, len).is_err() {
+        return;
+    }
+    if method == "HEAD" || len == 0 {
+        return;
+    }
+    let Ok(mut file) = File::open(&resolved) else {
+        return;
+    };
+    let _ = copy_range(&mut file, stream, 0, len.saturating_sub(1));
 }
 
 #[cfg(test)]

@@ -1,10 +1,17 @@
 mod media_server;
 mod directory;
+mod hls_transcoder;
+#[cfg(windows)]
+mod native_video;
+#[cfg(windows)]
+mod video_drop;
+#[cfg(windows)]
+mod video_overlay;
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
@@ -13,8 +20,8 @@ struct LaunchState {
     path: Mutex<Option<String>>,
 }
 
-struct MediaServer {
-    port: u16,
+pub struct MediaServer {
+    pub port: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -110,7 +117,15 @@ fn scan_io_error(stage: &str, path: &str, err: std::io::Error) -> String {
     let code = err.raw_os_error()
         .map(|code| format!("0x{:08X}", code as u32))
         .unwrap_or_else(|| "无系统错误码".into());
-    let message = format!("[{stage}] {path}：{err}（{code}）");
+    // ERROR_DIRECTORY (267) on a mapped network drive is usually a transient
+    // SMB failure (session renegotiation, redirector hiccup) rather than a bad
+    // path — the same path typically opens again moments later.
+    let hint = if err.raw_os_error() == Some(267) {
+        "；目录位于网络驱动器时多为瞬时故障，可稍后重试"
+    } else {
+        ""
+    };
+    let message = format!("[{stage}] {path}：{err}（{code}）{hint}");
     eprintln!("[list_dir_files] {message}");
     message
 }
@@ -597,6 +612,9 @@ fn revoke_mime_defaults(text: &str, desktops: &[&str], mimes: &[String]) -> Stri
 }
 
 #[tauri::command]
+fn native_video_available() -> bool { cfg!(windows) }
+
+#[tauri::command]
 fn video_stream_url(state: tauri::State<MediaServer>, path: String) -> Result<String, String> {
     eprintln!("[video_stream_url] path={path:?}");
     let (_file, metadata) = media_server::open_media(&path).map_err(|err| {
@@ -642,16 +660,35 @@ fn read_plugin_file(app: AppHandle, path: String) -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let launch = first_file_arg(std::env::args());
-    let media_port = media_server::start().expect("start local media server");
+    // HLS root resolved after the AppHandle is available; for now the media
+    // server starts without HLS support, and the setup hook fills it in once
+    // `app_cache_dir` is known.
+    let hls_root: media_server::HlsCacheRoot = Arc::new(Mutex::new(None));
+    let media_port = media_server::start_with_hls_root(hls_root.clone())
+        .expect("start local media server");
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(LaunchState {
             path: Mutex::new(launch.clone()),
         })
         .manage(MediaServer { port: media_port })
+        .manage(hls_transcoder::HlsTranscoder::default())
+        .manage(hls_root.clone())
         .setup(move |app| {
+            #[cfg(windows)]
+            app.manage(native_video::NativeVideo::default());
             if let Some(path) = launch.as_deref() {
                 set_window_file_title(app.handle(), path);
+            }
+            // Bind the HLS cache root now that the app handle is alive. Any
+            // request arriving before this completes gets 503 from the media
+            // server, which the frontend treats as a transient failure.
+            if let Ok(cache) = app.path().app_cache_dir() {
+                if let Some(state) = app.try_state::<media_server::HlsCacheRoot>() {
+                    if let Ok(mut guard) = state.lock() {
+                        *guard = Some(cache);
+                    }
+                }
             }
             Ok(())
         })
@@ -667,6 +704,22 @@ pub fn run() {
             grant_file_associations,
             revoke_file_associations,
             video_stream_url,
+            native_video_available,
+            hls_transcoder::ffmpeg_available,
+            hls_transcoder::hls_open,
+            hls_transcoder::hls_close,
+            #[cfg(windows)]
+            native_video::native_video_open,
+            #[cfg(windows)]
+            native_video::native_video_overlay,
+            #[cfg(windows)]
+            native_video::native_video_layout,
+            #[cfg(windows)]
+            native_video::native_video_control,
+            #[cfg(windows)]
+            native_video::native_video_status,
+            #[cfg(windows)]
+            native_video::native_video_close,
             list_plugin_dirs,
             read_plugin_file
         ])

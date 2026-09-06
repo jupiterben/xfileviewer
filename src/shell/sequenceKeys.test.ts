@@ -13,15 +13,15 @@ describe("sequenceStepForKey", () => {
     expect(sequenceStepForKey(KIND_DOCUMENT, "ArrowRight")).toBe(1);
   });
 
-  it("uses page keys to switch videos, not arrows", () => {
-    expect(sequenceStepForKey(KIND_VIDEO, "PageUp")).toBe(-1);
-    expect(sequenceStepForKey(KIND_VIDEO, "PageDown")).toBe(1);
+  it("uses up/down arrows to switch videos, not left/right arrows", () => {
+    expect(sequenceStepForKey(KIND_VIDEO, "ArrowUp")).toBe(-1);
+    expect(sequenceStepForKey(KIND_VIDEO, "ArrowDown")).toBe(1);
     expect(sequenceStepForKey(KIND_VIDEO, "ArrowLeft")).toBeNull();
     expect(sequenceStepForKey(KIND_VIDEO, "ArrowRight")).toBeNull();
   });
 
-  it("does not steal page keys from documents", () => {
-    expect(sequenceStepForKey(KIND_DOCUMENT, "PageUp")).toBeNull();
-    expect(sequenceStepForKey(KIND_DOCUMENT, "PageDown")).toBeNull();
+  it("does not steal arrow keys from documents", () => {
+    expect(sequenceStepForKey(KIND_DOCUMENT, "ArrowUp")).toBeNull();
+    expect(sequenceStepForKey(KIND_DOCUMENT, "ArrowDown")).toBeNull();
   });
 });

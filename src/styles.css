@@ -41,7 +41,7 @@ body {
   position: absolute;
   top: 50%;
   z-index: 2;
-  transform: translateY(-50%);
+  transform: translateX(-50%);
   width: 44px;
   height: 88px;
   padding: 0;
@@ -53,6 +53,15 @@ body {
   line-height: 88px;
   cursor: pointer;
   opacity: 0.55;
+}
+
+/* While a video is mounted, the floating arrows overlap the video surface.
+ * The native backend draws an HWND over the whole surface, so they would be
+ * invisible yet still clickable; the video control bar (outside the surface)
+ * carries navigation instead. The window-mode toggle docks into the bar too
+ * (see dockWindowModeToggle in main.ts) rather than being hidden. */
+.video-viewing .nav {
+  display: none;
 }
 
 .nav:hover:not(:disabled) {
@@ -116,6 +125,19 @@ body {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   background: #000;
+  /* Portrait clips fit to a narrow window; the control bar queries this
+   * container's width to collapse secondary controls before overflowing. */
+  container-type: inline-size;
+}
+
+.video-surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
 }
 
 .video {
@@ -140,6 +162,7 @@ body {
 }
 
 .video-play,
+.video-nav,
 .video-mute {
   flex-shrink: 0;
   width: 36px;
@@ -150,6 +173,22 @@ body {
   background: rgb(255 255 255 / 12%);
   color: #fff;
   cursor: pointer;
+}
+
+.video-nav {
+  font-size: 20px;
+  line-height: 30px;
+}
+
+.video-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.video-nav-group {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
 }
 
 .video-time {
@@ -166,11 +205,203 @@ body {
   cursor: pointer;
 }
 
+.video-status {
+  position: absolute;
+  inset: 0 0 48px;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #000;
+  color: #c4c7cc;
+  text-align: center;
+}
+
+.video-status[hidden] {
+  display: none;
+}
+
+/* Vertical hover popup, above the speaker without covering its hit target. */
+.video-volume-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.video-volume-pop {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-direction: column;
+  justify-content: center;
+  width: 52px;
+  height: 168px;
+  padding: 8px 0;
+  border: 1px solid #2a2d36;
+  border-radius: 8px;
+  background: #0c0d10;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
+  transform: translateX(-50%);
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 120ms ease 180ms, visibility 0s linear 300ms;
+}
+
+/* Bridge the gap so moving from speaker to slider keeps the popup open. */
+.video-volume-pop::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -9px;
+  height: 9px;
+}
+
+.video-volume-wrap:hover .video-volume-pop,
+.video-volume-wrap:focus-within .video-volume-pop {
+  visibility: visible;
+  opacity: 1;
+  transition-delay: 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .video-volume-pop { transition: none; }
+}
+
+.video-mute {
+  display: grid;
+  place-items: center;
+  background: transparent;
+}
+
+.video-mute:hover {
+  background: rgb(255 255 255 / 12%);
+}
+
 .video-volume {
-  width: clamp(48px, 12vw, 88px);
-  min-width: 48px;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 32px;
+  height: 128px;
+  margin: 0;
   accent-color: #8ab4f8;
   cursor: pointer;
+  touch-action: none;
+}
+
+.video-volume-value {
+  width: 4ch;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: #c4c7cc;
+}
+
+.video-volume-wrap.is-muted .video-volume {
+  accent-color: #9aa0a6;
+}
+
+.video-volume:focus-visible,
+.video-mute:focus-visible {
+  outline: 2px solid #8ab4f8;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Overlay mode: the "video-overlay" webview is a transparent hit-surface
+ * laid exactly over the video rectangle (above the mpv HWND). Strip the app
+ * chrome so nothing paints an opaque background, and keep the bar's own
+ * volume pop hidden — the popup lives in the overlay instead. */
+html.overlay-mode,
+html.overlay-mode body {
+  background: transparent;
+}
+
+html.overlay-mode .workspace,
+html.overlay-mode #settings,
+html.overlay-mode #assoc-overlay,
+html.overlay-mode .scan-status {
+  display: none;
+}
+
+.video-volume-wrap.is-overlay .video-volume-pop {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.video-overlay-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+.video-overlay-pop {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  width: 52px;
+  height: 184px;
+  border: 1px solid #2a2d36;
+  border-radius: 10px;
+  background: rgb(12 13 16 / 96%);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(4px);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+
+.video-overlay-pop.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Invisible strip bridging the gap between the popup and the control bar so
+ * the pointer can travel from the bar into the popup without leaving both
+ * webviews' hover states. */
+.video-overlay-pop::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -8px;
+  height: 8px;
+}
+
+.video-overlay-volume {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 32px;
+  height: 128px;
+  touch-action: none;
+  accent-color: #8ab4f8;
+  cursor: pointer;
+}
+
+/* Narrow windows (portrait videos): the bar cannot fit every control, and
+ * overflow would silently clip the right-hand side (volume, window-mode
+ * toggle). Collapse the least essential controls in order instead —
+ * timestamps first; keep volume adjustment visible. */
+@container (max-width: 540px) {
+  .video-time {
+    display: none;
+  }
+}
+
+@container (max-width: 430px) {
+  .video-bar {
+    gap: 6px;
+  }
 }
 
 .media {
@@ -324,6 +555,15 @@ body {
 
 .media-window-mode[hidden] {
   display: none;
+}
+
+/* Docked variant: while a video is mounted the toggle lives at the end of the
+ * video control bar instead of floating over the (covered) top-right corner. */
+.video-bar .media-window-mode {
+  position: static;
+  z-index: auto;
+  flex-shrink: 0;
+  margin-left: 2px;
 }
 
 .assoc-exts {

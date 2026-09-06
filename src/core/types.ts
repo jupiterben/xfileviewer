@@ -12,6 +12,24 @@ export interface ViewerContext {
     height: number,
     chrome?: { width: number; height: number },
   ) => void;
+  /**
+   * Sequence navigation from inside the viewer (e.g. the video control bar).
+   * The native video backend draws over the whole surface, so the floating
+   * window-level prev/next buttons are invisible there; the control bar
+   * (below the video) provides the same actions instead.
+   */
+  onNavigate?: (step: 1 | -1) => void;
+  /**
+   * Show/hide the floating volume popup inside the transparent overlay
+   * webview ("video-overlay"), which sits exactly over the video surface and
+   * above the mpv HWND. Coordinates are CSS pixels relative to the surface;
+   * `bottom` is the popup's bottom edge measured up from the surface bottom.
+   * Omitted `pos` (show=false) hides the popup.
+   */
+  onVolumePopup?: (
+    show: boolean,
+    pos?: { x: number; bottom: number; volume: number; muted: boolean },
+  ) => void;
 }
 
 export interface Viewer {
