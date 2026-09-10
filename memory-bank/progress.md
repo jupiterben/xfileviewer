@@ -8,7 +8,7 @@
 - 视频：画面 contain 铺满剩余区域，控制条高度计入窗口，无垂直滚动条
 - 设置：空状态进入，按 Kind 分组勾选，Apply 后才改系统默认打开方式
 - 系统：fileAssociations（含 md/markdown）、asset protocol；允许多进程多开
-- 安装：`./install.sh` 每次安装自动升高版本（`max(源码补丁+1, git提交数, 已安装+1)`），写入 package.json / tauri.conf.json / Cargo.toml；空状态与设置页显示 `v…`
+- 安装：`./install_linux.sh`（`./install.sh` 为兼容入口）默认沿用源码版本；`--bump-version` 才升高版本（`max(源码补丁+1, git提交数, 已安装+1)`）并写入 package.json / tauri.conf.json / Cargo.toml；空状态与设置页显示 `v…`
 - 安装选包：按戳记版本匹配 `*_${version}_*.deb`（rpm：`*-${version}-*.rpm`），找不到则列出目录并失败；同版本 `apt --reinstall`；构建前清理旧 bundle
 - 验证：`npm test` 85 passed；适应尺寸缩放保持窗口中心（贴边时夹到工作区内）
 

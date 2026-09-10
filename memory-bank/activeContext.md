@@ -16,8 +16,8 @@ Esc：查看/空状态关闭窗口退出；设置页先关掉设置；关联确�
 
 空状态可进设置：关联文件格式（按 Kind 分组勾选，Apply 才改系统默认打开方式）。看文件时没有关联入口。
 
-内置 Markdown 查看器支持 8 套主题和 4 档正文宽度。一键编译安装：`./install.sh`（每次安装自动升高补丁号，取 源码+1 / git 提交数 / 已安装+1 的最大值）。空状态和设置页显示当前版本。
+内置 Markdown 查看器支持 8 套主题和 4 档正文宽度。一键编译安装：`./install_linux.sh`（`./install.sh` 转交同一脚本；默认沿用源码版本，加 `--bump-version` 才升高补丁号，取 源码+1 / git 提交数 / 已安装+1 的最大值）。空状态和设置页显示当前版本。
 
 Windows 默认走随安装包分发的 libmpv（`native/mpv/libmpv-2.dll`），自带 HEVC 解码。`install.bat` 不再检测系统 HEVC；运行中若 libmpv 失败回退到 WebView 元素、且 HEVC/H.265 视频被 `MEDIA_ERR_SRC_NOT_SUPPORTED` 拒绝，DevTools 会提示装微软官方 HEVC 视频扩展。
 
-`install.sh` 安装时按戳记版本选包（`*_${version}_*.deb` / rpm 等价），不再用 `*.deb[0]`；同版本走 `apt-get install --reinstall`。构建前会清掉 deb/rpm 输出目录里的旧包，避免残留干扰。
+`install_linux.sh` 安装时按戳记版本选包（`*_${version}_*.deb` / rpm 等价），不再用 `*.deb[0]`；同版本走 `apt-get install --reinstall`。构建前会清掉 deb/rpm 输出目录里的旧包，避免残留干扰。

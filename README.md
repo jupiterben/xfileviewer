@@ -5,8 +5,11 @@
 Linux：
 
 ```bash
-./install.sh
+./install_linux.sh                 # 一键编译安装（沿用当前版本）
+./install_linux.sh --bump-version  # 升高补丁号后再编译安装
 ```
+
+兼容入口：`./install.sh`。
 
 Windows：安装 Node.js 22+、Rust 的 Windows MSVC 工具链，以及 Visual Studio Build Tools（勾选"使用 C++ 的桌面开发"和 Windows SDK），重新打开终端后，双击根目录的 `install.bat`。
 

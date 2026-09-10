@@ -4823,7 +4823,7 @@ dependencies = [
 
 [[package]]
 name = "xfileviewer"
-version = "0.1.2"
+version = "0.1.10"
 dependencies = [
  "libloading 0.8.9",
  "percent-encoding",
