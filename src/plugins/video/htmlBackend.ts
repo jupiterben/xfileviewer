@@ -5,6 +5,7 @@ import type { PlayerShell, VideoBackend } from "./playerShell";
 const MEDIA_ERR_NETWORK = 2;
 const MEDIA_ERR_DECODE = 3;
 const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
+let sessionCounter = 0;
 
 export function mediaErrorMessage(code: number | undefined): string {
   switch (code) {
@@ -27,6 +28,7 @@ export function createHtmlBackend(
   shell: PlayerShell,
   ctx: ViewerContext,
 ): VideoBackend {
+  const session = `html-${Date.now().toString(36)}-${sessionCounter++}`;
   const video = document.createElement("video");
   video.className = "media video";
   video.autoplay = true;
@@ -38,6 +40,12 @@ export function createHtmlBackend(
   shell.surface.append(video);
 
   let cancelled = false;
+  let opened = false;
+  const closeSession = () => {
+    if (!opened) return;
+    opened = false;
+    void invoke("video_stream_close", { session }).catch(() => undefined);
+  };
 
   const onEnded = () => shell.ended();
   const onPlay = () => shell.patch({ paused: false });
@@ -77,10 +85,11 @@ export function createHtmlBackend(
 
   return {
     async open() {
+      if (cancelled) return;
       console.debug("[video] requesting stream", { path: ctx.path });
       let url: string;
       try {
-        url = await invoke<string>("video_stream_url", { path: ctx.path });
+        url = await invoke<string>("video_stream_url", { path: ctx.path, session });
       } catch (err) {
         console.error("[video] stream request failed", {
           path: ctx.path,
@@ -88,7 +97,11 @@ export function createHtmlBackend(
         });
         throw err;
       }
-      if (cancelled) return;
+      opened = true;
+      if (cancelled) {
+        closeSession();
+        return;
+      }
       video.src = url;
     },
     setPaused(paused) {
@@ -103,6 +116,7 @@ export function createHtmlBackend(
       video.currentTime = time;
     },
     destroy() {
+      if (cancelled) return;
       cancelled = true;
       video.removeEventListener("ended", onEnded);
       video.removeEventListener("play", onPlay);
@@ -115,6 +129,7 @@ export function createHtmlBackend(
       video.removeAttribute("src");
       video.load();
       video.remove();
+      closeSession();
     },
   };
 }

@@ -1,6 +1,6 @@
 # xfileviewer
 
-本机图片/视频/Markdown 打开器。双击打开后，同目录同一类文件组成可循环序列。视频播完自动下一个；左右键快进/快退，Page Up / Page Down 切换视频；图片用左右键切换；Markdown 可滚动预览，左右键切换同目录文档。
+本机图片/视频/Markdown 打开器。双击打开后，同目录同一类文件组成可循环序列。视频播完自动下一个；左右键快进/快退，上下键切换视频；图片用左右键切换；Markdown 可滚动预览，左右键切换同目录文档。
 
 Linux：
 
@@ -8,8 +8,6 @@ Linux：
 ./install_linux.sh                 # 一键编译安装（沿用当前版本）
 ./install_linux.sh --bump-version  # 升高补丁号后再编译安装
 ```
-
-兼容入口：`./install.sh`。
 
 Windows：安装 Node.js 22+、Rust 的 Windows MSVC 工具链，以及 Visual Studio Build Tools（勾选"使用 C++ 的桌面开发"和 Windows SDK），重新打开终端后，双击根目录的 `install.bat`。
 
@@ -29,10 +27,15 @@ Windows 安装包内置 libmpv（`native/mpv/libmpv-2.dll`），HEVC / H.264 / V
 
 开发：
 
+建议使用 Node.js 22（见 `.nvmrc`）。Windows 系统 tar 不支持解码器压缩格式时，需要 PATH 中有 `7z.exe`，脚本会自动回退。
+
 ```bash
-npm install
+npm ci
 npm test
+npm run build
 npm run tauri dev -- -- /path/to/file.jpg
 ```
+
+模块职责、查看器接口和媒体服务授权流程见 [架构说明](docs/architecture.md)。
 
 第三方插件目录：`~/.config/com.xfileviewer.app/plugins/<id>/manifest.json`（Linux）。插件声明 Kind（`image`、`video` 或 `document`）和 `mount()` 查看器。

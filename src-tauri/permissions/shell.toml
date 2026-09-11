@@ -13,6 +13,7 @@ commands.allow = [
   "query_file_associations",
   "revoke_file_associations",
   "video_stream_url",
+  "video_stream_close",
   "list_plugin_dirs",
   "read_plugin_file"
 ]

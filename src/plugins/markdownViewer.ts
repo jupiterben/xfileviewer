@@ -167,7 +167,7 @@ function mountMarkdown(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
 
   const onKey = (event: KeyboardEvent) => {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
-    if (associationOpen()) return;
+    if (ctx.isInteractionBlocked?.()) return;
     if (event.key === "t" || event.key === "T") {
       event.preventDefault();
       event.stopPropagation();
@@ -245,10 +245,6 @@ function applyTheme(stage: HTMLElement, theme: MarkdownTheme) {
 
 function applyWidth(stage: HTMLElement, width: MarkdownWidth) {
   stage.dataset.mdWidth = width.id;
-}
-
-function associationOpen(): boolean {
-  return document.querySelector<HTMLElement>("#assoc-overlay")?.hidden === false;
 }
 
 async function readText(src: string): Promise<string> {

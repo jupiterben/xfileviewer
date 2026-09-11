@@ -1,7 +1,6 @@
 import type { PluginManifest } from "../core/types";
 import { imageViewer } from "./imageViewer";
-import { markdownViewer } from "./markdownViewer";
-import { videoViewer } from "./videoViewer";
+import { lazyViewer } from "./lazyViewer";
 
 export function builtinPlugins(): PluginManifest[] {
   return [
@@ -26,14 +25,20 @@ export function builtinPlugins(): PluginManifest[] {
       name: "Video",
       version: "1.0.0",
       viewers: [
-        videoViewer("video-html5", ["mp4", "webm", "mkv", "mov", "avi"]),
+        lazyViewer(
+          { id: "video-html5", kindId: "video", extensions: ["mp4", "webm", "mkv", "mov", "avi"] },
+          async () => (await import("./videoViewer")).videoViewer("video-html5", ["mp4", "webm", "mkv", "mov", "avi"]),
+        ),
       ],
     },
     {
       id: "builtin-markdown",
       name: "Markdown",
       version: "1.0.0",
-      viewers: [markdownViewer("markdown-gfm", ["md", "markdown"])],
+      viewers: [lazyViewer(
+        { id: "markdown-gfm", kindId: "document", extensions: ["md", "markdown"] },
+        async () => (await import("./markdownViewer")).markdownViewer("markdown-gfm", ["md", "markdown"]),
+      )],
     },
   ];
 }

@@ -1,5 +1,12 @@
+export interface ViewerNavigation {
+  disabled: boolean;
+  previousTitle?: string;
+  nextTitle?: string;
+}
+
 export interface ViewerHandle {
   destroy(): void;
+  setNavigation?(state: ViewerNavigation): void;
 }
 
 export interface ViewerContext {
@@ -7,6 +14,8 @@ export interface ViewerContext {
   src: string;
   onEnded: () => void;
   onError: (message: string) => void;
+  isInteractionBlocked?: () => boolean;
+  onToolbar?: (element: HTMLElement | null) => void;
   onContentSize?: (
     width: number,
     height: number,

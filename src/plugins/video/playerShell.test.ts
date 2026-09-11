@@ -143,12 +143,10 @@ describe("player shell", () => {
     expect(calls).toEqual(["paused:false", "seek:5"]);
   });
 
-  it("ignores keys while the association overlay is open", () => {
-    setup();
-    const overlay = document.createElement("div");
-    overlay.id = "assoc-overlay";
-    overlay.hidden = false;
-    document.body.append(overlay);
+  it("ignores keys when the host blocks interaction", () => {
+    const ctx = makeCtx();
+    ctx.isInteractionBlocked = () => true;
+    shell = createPlayerShell(ctx);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
     expect(calls).toEqual([]);
   });
@@ -184,11 +182,12 @@ describe("player shell", () => {
     ctx.onNavigate = vi.fn();
     shell = createPlayerShell(ctx);
     document.body.append(shell.el);
-    // Navigation starts disabled; main.ts enables it once a sequence exists.
+    // Navigation starts disabled until the host supplies sequence state.
     expect(shell.nav.prev.disabled).toBe(true);
     expect(shell.nav.next.disabled).toBe(true);
-    shell.nav.prev.disabled = false;
-    shell.nav.next.disabled = false;
+    shell.setNavigation({ disabled: false, previousTitle: "Previous 1/2", nextTitle: "Next 1/2" });
+    expect(shell.nav.prev.title).toBe("Previous 1/2");
+    expect(shell.nav.next.title).toBe("Next 1/2");
     shell.nav.prev.click();
     shell.nav.next.click();
     expect(ctx.onNavigate).toHaveBeenCalledWith(-1);

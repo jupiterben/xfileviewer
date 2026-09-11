@@ -57,6 +57,7 @@ impl HlsTranscoder {
         &self,
         cache_root: &Path,
         media_port: u16,
+        media_base_url: &str,
         session: &str,
         path: &str,
     ) -> Result<HlsInfo, String> {
@@ -64,8 +65,7 @@ impl HlsTranscoder {
             return Err("非法的会话标识".into());
         }
         let ffmpeg = Self::locate_ffmpeg().ok_or_else(|| "ffmpeg 不在 PATH 中".to_string())?;
-        crate::media_server::open_media(path)
-            .map_err(|err| format!("无法打开视频：{err}"))?;
+        crate::media_server::open_media(path).map_err(|err| format!("无法打开视频：{err}"))?;
 
         // Per-session dir, e.g. <cache_root>/hls/<session>. The media server
         // refuses requests whose canonical path escapes this directory.
@@ -83,36 +83,48 @@ impl HlsTranscoder {
         // (one segment ≈ 4s, but keyframes land at the segment boundary).
         let mut cmd = Command::new(&ffmpeg);
         cmd.arg("-hide_banner")
-            .arg("-loglevel").arg("error")
+            .arg("-loglevel")
+            .arg("error")
             .arg("-nostdin")
             .arg("-y")
-            .arg("-i").arg(path)
-            .arg("-c:v").arg("libx264")
-            .arg("-preset").arg("veryfast")
-            .arg("-crf").arg("23")
-            .arg("-g").arg("60")
-            .arg("-sc_threshold").arg("0")
-            .arg("-c:a").arg("aac")
-            .arg("-b:a").arg("128k")
-            .arg("-ac").arg("2")
-            .arg("-f").arg("hls")
-            .arg("-hls_time").arg("4")
-            .arg("-hls_list_size").arg("0")
-            .arg("-hls_playlist_type").arg("event")
-            .arg("-hls_segment_filename").arg(&seg_pattern)
+            .arg("-i")
+            .arg(path)
+            .arg("-c:v")
+            .arg("libx264")
+            .arg("-preset")
+            .arg("veryfast")
+            .arg("-crf")
+            .arg("23")
+            .arg("-g")
+            .arg("60")
+            .arg("-sc_threshold")
+            .arg("0")
+            .arg("-c:a")
+            .arg("aac")
+            .arg("-b:a")
+            .arg("128k")
+            .arg("-ac")
+            .arg("2")
+            .arg("-f")
+            .arg("hls")
+            .arg("-hls_time")
+            .arg("4")
+            .arg("-hls_list_size")
+            .arg("0")
+            .arg("-hls_playlist_type")
+            .arg("event")
+            .arg("-hls_segment_filename")
+            .arg(&seg_pattern)
             .arg(&m3u8);
         cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
 
-        let child = cmd.spawn().map_err(|err| {
-            format!("启动 ffmpeg 失败（{}）：{err}", ffmpeg.display())
-        })?;
+        let child = cmd
+            .spawn()
+            .map_err(|err| format!("启动 ffmpeg 失败（{}）：{err}", ffmpeg.display()))?;
 
-        let url = format!(
-            "http://127.0.0.1:{media_port}/hls/{}/index.m3u8",
-            session
-        );
+        let url = format!("{media_base_url}/hls/{}/index.m3u8", session);
 
         let mut guard = self.jobs.lock().map_err(|err| err.to_string())?;
         if let Some(mut prev) = guard.remove(session) {
@@ -121,8 +133,18 @@ impl HlsTranscoder {
             let _ = prev.child.kill();
             let _ = prev.child.wait();
         }
-        guard.insert(session.to_string(), Job { child, dir, url: url.clone() });
-        Ok(HlsInfo { url, port: media_port })
+        guard.insert(
+            session.to_string(),
+            Job {
+                child,
+                dir,
+                url: url.clone(),
+            },
+        );
+        Ok(HlsInfo {
+            url,
+            port: media_port,
+        })
     }
 
     /// Stop a single session: kill the child, remove its temp dir.
@@ -144,7 +166,9 @@ impl HlsTranscoder {
 
     /// Stop every job and wipe the HLS cache root. Called on app exit.
     pub fn shutdown(&self) {
-        let Ok(mut guard) = self.jobs.lock() else { return };
+        let Ok(mut guard) = self.jobs.lock() else {
+            return;
+        };
         for (_, mut job) in guard.drain() {
             let _ = job.child.kill();
             let _ = job.child.wait();
@@ -154,13 +178,20 @@ impl HlsTranscoder {
 }
 
 impl Drop for HlsTranscoder {
-    fn drop(&mut self) { self.shutdown(); }
+    fn drop(&mut self) {
+        self.shutdown();
+    }
 }
 
 fn which(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     let exts: &[String] = if cfg!(windows) {
-        &[".exe".to_string(), ".cmd".to_string(), ".bat".to_string(), "".to_string()]
+        &[
+            ".exe".to_string(),
+            ".cmd".to_string(),
+            ".bat".to_string(),
+            "".to_string(),
+        ]
     } else {
         &["".to_string()]
     };
@@ -214,9 +245,7 @@ fn is_safe_relative(s: &str) -> bool {
     // (which the URL path would never legitimately contain). The caller also
     // trims leading "/" before this check, so "/foo" becomes "foo" — but
     // anything that still tries to escape is caught here.
-    !s.contains("..")
-        && !s.contains('\\')
-        && !s.starts_with('/')
+    !s.contains("..") && !s.contains('\\') && !s.starts_with('/')
 }
 
 /// Tauri command: probe ffmpeg availability. Always cheap; the result is
@@ -232,7 +261,7 @@ pub fn ffmpeg_available() -> bool {
 #[tauri::command]
 pub fn hls_open(
     state: tauri::State<HlsTranscoder>,
-    media: tauri::State<crate::MediaServer>,
+    media: tauri::State<crate::media_server::MediaServer>,
     hls_root: tauri::State<crate::media_server::HlsCacheRoot>,
     session: String,
     path: String,
@@ -242,7 +271,7 @@ pub fn hls_open(
         .map_err(|err| err.to_string())?
         .clone()
         .ok_or_else(|| "媒体服务尚未就绪".to_string())?;
-    state.start(&cache, media.port, &session, &path)
+    state.start(&cache, media.port, &media.base_url(), &session, &path)
 }
 
 /// Tauri command: stop the HLS session and remove its temp dir.
@@ -328,7 +357,7 @@ mod tests {
     fn start_rejects_unsafe_session() {
         let t = HlsTranscoder::default();
         let root = std::env::temp_dir();
-        let err = t.start(&root, 0, "../escape", "/dev/null").unwrap_err();
+        let err = t.start(&root, 0, "", "../escape", "/dev/null").unwrap_err();
         assert!(err.contains("非法"));
     }
 

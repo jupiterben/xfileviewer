@@ -72,7 +72,9 @@ describe("video viewer", () => {
   });
   it("requests a stream and points the element at it", async () => {
     const video = await mount();
-    expect(invoke).toHaveBeenCalledWith("video_stream_url", { path: "test.mp4" });
+    expect(invoke).toHaveBeenCalledWith("video_stream_url", {
+      path: "test.mp4", session: expect.stringMatching(/^html-/),
+    });
     expect(video.src).toBe("http://localhost/video");
   });
 
@@ -137,21 +139,21 @@ describe("video viewer", () => {
     expect(onContentSize).toHaveBeenCalledWith(1280, 720, expect.objectContaining({ width: 0 }));
   });
 
-  it("toggles the video-viewing class on the workspace", async () => {
-    const workspace = document.createElement("div");
-    workspace.className = "workspace";
-    document.body.append(workspace);
-    handle = videoViewer("test", ["mp4"]).mount(workspace, {
+  it("exposes its toolbar and navigation through the viewer contract", async () => {
+    const onToolbar = vi.fn();
+    handle = videoViewer("test", ["mp4"]).mount(document.body, {
       path: "test.mp4",
       src: "",
       onError,
       onEnded,
       onContentSize,
+      onToolbar,
     });
-    await Promise.resolve();
-    expect(workspace.classList.contains("video-viewing")).toBe(true);
+    expect(onToolbar).toHaveBeenCalledWith(document.querySelector(".video-bar"));
+    handle.setNavigation?.({ disabled: false });
+    expect(document.querySelector<HTMLButtonElement>(".video-nav-next")!.disabled).toBe(false);
     handle.destroy();
     handle = undefined;
-    expect(workspace.classList.contains("video-viewing")).toBe(false);
+    expect(onToolbar).toHaveBeenLastCalledWith(null);
   });
 });

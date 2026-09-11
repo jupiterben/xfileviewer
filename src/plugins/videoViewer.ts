@@ -28,12 +28,6 @@ export function videoViewer(id: string, extensions: string[]): Viewer {
 function mountVideo(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
   const shell = createPlayerShell(ctx);
   el.append(shell.el);
-  // While a video is mounted, the window-level floating buttons (prev/next
-  // arrows and the window-mode toggle) would sit on top of the video surface
-  // — invisible under the native backend's HWND yet still clickable. CSS
-  // hides them for as long as this class is present.
-  const workspace = el.closest(".workspace");
-  workspace?.classList.add("video-viewing");
   let backend: VideoBackend | null = null;
   let cancelled = false;
 
@@ -137,12 +131,12 @@ function mountVideo(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
   })();
 
   return {
+    setNavigation: state => shell.setNavigation(state),
     destroy() {
       cancelled = true;
       backend?.destroy();
       backend = null;
       shell.destroy();
-      workspace?.classList.remove("video-viewing");
     },
   };
 }

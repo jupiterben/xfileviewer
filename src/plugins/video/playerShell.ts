@@ -7,7 +7,7 @@ import {
   saveAudioSettings,
   type VideoAudioSettings,
 } from "./audioSettings";
-import type { ViewerContext } from "../../core/types";
+import type { ViewerContext, ViewerNavigation } from "../../core/types";
 
 export interface PlayerState {
   time: number;
@@ -39,9 +39,9 @@ export interface PlayerShell {
   surface: HTMLElement;
   state: PlayerState;
   audio: VideoAudioSettings;
-  /** Sequence nav buttons in the control bar; main.ts mirrors window-level
-   * prev/next disabled/title state onto them. */
+  /** Sequence navigation owned by this viewer. */
   nav: { prev: HTMLButtonElement; next: HTMLButtonElement };
+  setNavigation(state: ViewerNavigation): void;
   /** Native video needs the popup in the overlay above its video surface. */
   setPopupMode(mode: "inline" | "overlay"): void;
   attach(backend: VideoBackend): void;
@@ -201,6 +201,7 @@ export function createPlayerShell(ctx: ViewerContext): PlayerShell {
 
   bar.append(navGroup, currentEl, seek, durationEl, volumeWrap);
   wrap.append(surface, status, bar);
+  ctx.onToolbar?.(bar);
 
   function render() {
     playBtn.textContent = state.paused ? "▶" : "❚❚";
@@ -311,7 +312,7 @@ export function createPlayerShell(ctx: ViewerContext): PlayerShell {
 
   const onKey = (event: KeyboardEvent) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
-    if (document.querySelector<HTMLElement>("#assoc-overlay")?.hidden === false) {
+    if (ctx.isInteractionBlocked?.()) {
       return;
     }
     if (event.key === " ") {
@@ -335,6 +336,12 @@ export function createPlayerShell(ctx: ViewerContext): PlayerShell {
     state,
     audio,
     nav: { prev: navPrev, next: navNext },
+    setNavigation(state) {
+      navPrev.disabled = state.disabled;
+      navNext.disabled = state.disabled;
+      if (state.previousTitle !== undefined) navPrev.title = state.previousTitle;
+      if (state.nextTitle !== undefined) navNext.title = state.nextTitle;
+    },
     setPopupMode(mode) {
       popupMode = mode;
       volumeWrap.classList.toggle("is-overlay", mode === "overlay");
@@ -376,6 +383,7 @@ export function createPlayerShell(ctx: ViewerContext): PlayerShell {
       if (popupMode === "overlay") ctx.onVolumePopup?.(false);
       unlisteners.forEach((unlisten) => unlisten());
       window.removeEventListener("keydown", onKey);
+      ctx.onToolbar?.(null);
       wrap.remove();
     },
   };

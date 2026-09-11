@@ -40,8 +40,16 @@ if (!bytes || digest(bytes) !== hashes[target]) {
   if (digest(bytes) !== hashes[target]) throw new Error('Native runtime SHA-256 mismatch');
   await writeFile(archive, bytes);
 }
-// Windows' bundled bsdtar reads 7z; no extra extraction program is required.
-execFileSync('tar.exe', ['-xf', archive, '-C', output, 'libmpv-2.dll'], { stdio: 'inherit', windowsHide: true });
+try {
+  execFileSync('tar.exe', ['-xf', archive, '-C', output, 'libmpv-2.dll'], { stdio: 'inherit', windowsHide: true });
+} catch (tarError) {
+  // Some Windows bsdtar builds cannot decode BCJ2/LZMA archives.
+  try {
+    execFileSync('7z.exe', ['x', archive, `-o${output}`, 'libmpv-2.dll', '-y'], { stdio: 'inherit', windowsHide: true });
+  } catch (sevenZipError) {
+    throw new AggregateError([tarError, sevenZipError], 'Unable to extract libmpv. Install 7-Zip and add 7z.exe to PATH.');
+  }
+}
 await copyFile(resolve(root, 'licenses/mpv-GPL-2.0.txt'), resolve(output, 'GPL-2.0.txt'));
 await writeFile(resolve(output, 'runtime.json'), JSON.stringify({ archive: name, url, archiveSha256: hashes[target], sha256: digest(await readFile(resolve(output, 'libmpv-2.dll'))) }, null, 2));
 console.log(`Native video runtime prepared (${target})`);
