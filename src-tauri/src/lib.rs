@@ -29,6 +29,7 @@ pub fn run() {
         media_server::start_with_hls_root(hls_root.clone()).expect("start local media server");
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(launch::LaunchState {
             path: Mutex::new(launch.clone()),
         })

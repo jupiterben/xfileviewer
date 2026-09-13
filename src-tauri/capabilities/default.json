@@ -18,6 +18,7 @@
     "core:window:allow-current-monitor",
     "core:webview:allow-set-webview-focus",
     "opener:default",
+    "dialog:allow-open",
     "allow-shell-commands",
     "allow-video-pipeline"
   ]

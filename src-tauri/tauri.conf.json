@@ -4,9 +4,9 @@
   "version": "0.1.10",
   "identifier": "com.xfileviewer.app",
   "build": {
-    "beforeDevCommand": "npm run prepare:native && npm run dev",
+    "beforeDevCommand": "npm run prepare:icons && npm run prepare:native && npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run prepare:native && npm run build",
+    "beforeBuildCommand": "npm run prepare:icons && npm run prepare:native && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -24,21 +24,24 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": [
-          "$HOME/**",
-          "$HOME/**/*",
-          "$DESKTOP/**",
-          "$DOCUMENT/**",
-          "$DOWNLOAD/**",
-          "$PICTURE/**",
-          "$VIDEO/**",
-          "$PUBLIC/**",
-          "/media/**",
-          "/mnt/**",
-          "/run/media/**",
-          "/tmp/**",
-          "/**/*"
-        ]
+        "scope": {
+          "allow": [
+            "$HOME/**",
+            "$HOME/**/*",
+            "$DESKTOP/**",
+            "$DOCUMENT/**",
+            "$DOWNLOAD/**",
+            "$PICTURE/**",
+            "$VIDEO/**",
+            "$PUBLIC/**",
+            "/media/**",
+            "/mnt/**",
+            "/run/media/**",
+            "/tmp/**",
+            "/**/*"
+          ],
+          "requireLiteralLeadingDot": false
+        }
       }
     }
   },
@@ -149,6 +152,62 @@
           "markdown"
         ],
         "mimeType": "text/markdown",
+        "role": "Viewer"
+      },
+      {
+        "name": "GLB Model",
+        "ext": [
+          "glb"
+        ],
+        "mimeType": "model/gltf-binary",
+        "role": "Viewer"
+      },
+      {
+        "name": "glTF Model",
+        "ext": [
+          "gltf"
+        ],
+        "mimeType": "model/gltf+json",
+        "role": "Viewer"
+      },
+      {
+        "name": "OBJ Model",
+        "ext": [
+          "obj"
+        ],
+        "mimeType": "model/obj",
+        "role": "Viewer"
+      },
+      {
+        "name": "FBX Model",
+        "ext": [
+          "fbx"
+        ],
+        "mimeType": "application/vnd.autodesk.fbx",
+        "role": "Viewer"
+      },
+      {
+        "name": "PLY Model",
+        "ext": [
+          "ply"
+        ],
+        "mimeType": "application/x-ply",
+        "role": "Viewer"
+      },
+      {
+        "name": "Gaussian Splat",
+        "ext": [
+          "splat"
+        ],
+        "mimeType": "application/x-splat",
+        "role": "Viewer"
+      },
+      {
+        "name": "Compressed Gaussian Splat",
+        "ext": [
+          "ksplat"
+        ],
+        "mimeType": "application/x-ksplat",
         "role": "Viewer"
       }
     ],

@@ -14,5 +14,5 @@ export function createWheelPager(
 }
 
 export function kindUsesWheelPaging(kindId: string): boolean {
-  return kindId !== "document";
+  return kindId !== "document" && kindId !== "3dmodel";
 }

@@ -1,9 +1,19 @@
+import { MODEL_EXTENSIONS } from "./model/formats";
 import type { PluginManifest } from "../core/types";
 import { imageViewer } from "./imageViewer";
 import { lazyViewer } from "./lazyViewer";
 
 export function builtinPlugins(): PluginManifest[] {
   return [
+    {
+      id: "builtin-3dmodel",
+      name: "3D Model",
+      version: "1.0.0",
+      viewers: [lazyViewer(
+        { id: "model-three", kindId: "3dmodel", extensions: MODEL_EXTENSIONS },
+        async () => (await import("./modelViewer")).modelViewer(),
+      )],
+    },
     {
       id: "builtin-image",
       name: "Image",

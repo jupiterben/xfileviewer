@@ -24,3 +24,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+.tmp-imgtest
+
+# Generated Tauri icons (`npm run prepare:icons` from icon-source.png)
+src-tauri/icons/*
+!src-tauri/icons/icon-source.png
+src-tauri/icons.bak.*/
+

@@ -14,6 +14,8 @@ export interface ViewerContext {
   src: string;
   onEnded: () => void;
   onError: (message: string) => void;
+  /** Open a file through the shell, keeping directory navigation in sync. */
+  onOpen?: () => void;
   isInteractionBlocked?: () => boolean;
   onToolbar?: (element: HTMLElement | null) => void;
   onContentSize?: (
@@ -67,4 +69,5 @@ export interface Sequence {
 export const KIND_IMAGE = "image";
 export const KIND_VIDEO = "video";
 export const KIND_DOCUMENT = "document";
-export const BUILTIN_KINDS = [KIND_IMAGE, KIND_VIDEO, KIND_DOCUMENT] as const;
+export const KIND_3DMODEL = "3dmodel";
+export const BUILTIN_KINDS = [KIND_IMAGE, KIND_VIDEO, KIND_DOCUMENT, KIND_3DMODEL] as const;

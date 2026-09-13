@@ -92,6 +92,13 @@ fn mime_for_ext(ext: &str) -> Option<&'static str> {
         "mkv" => "video/x-matroska",
         "mov" => "video/quicktime",
         "avi" => "video/x-msvideo",
+        "ply" => "application/x-ply",
+        "splat" => "application/x-splat",
+        "ksplat" => "application/x-ksplat",
+        "glb" => "model/gltf-binary",
+        "gltf" => "model/gltf+json",
+        "obj" => "model/obj",
+        "fbx" => "application/vnd.autodesk.fbx",
         "md" | "markdown" => "text/markdown",
         "psd" | "psb" => "image/vnd.adobe.photoshop",
         "tif" | "tiff" => "image/tiff",
@@ -182,7 +189,7 @@ Terminal=false
 Type=Application
 StartupWMClass=xfileviewer
 Categories=Utility;Viewer;
-MimeType=image/jpeg;image/png;image/gif;image/webp;image/bmp;image/svg+xml;video/mp4;video/webm;video/x-matroska;video/quicktime;video/x-msvideo;text/markdown;text/x-markdown;
+MimeType=image/jpeg;image/png;image/gif;image/webp;image/bmp;image/svg+xml;video/mp4;video/webm;video/x-matroska;video/quicktime;video/x-msvideo;text/markdown;text/x-markdown;model/gltf-binary;model/gltf+json;model/obj;application/vnd.autodesk.fbx;application/x-ply;application/x-splat;application/x-ksplat;
 ";
     fs::write(&path, body).map_err(|err| err.to_string())?;
     let _ = std::process::Command::new("update-desktop-database")

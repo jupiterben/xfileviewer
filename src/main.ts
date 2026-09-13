@@ -7,6 +7,7 @@ const boot = getCurrentWebview().label === "video-overlay"
 
 void boot.catch(error => {
   console.error("[app] boot failed", error);
+  const message = error instanceof Error ? error.message : String(error);
   const host = document.querySelector<HTMLElement>("#viewer-host");
-  if (host) host.textContent = error instanceof Error ? error.message : String(error);
+  if (host) host.textContent = message;
 });

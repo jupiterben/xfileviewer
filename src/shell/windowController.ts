@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { currentMonitor, getCurrentWindow, LogicalPosition, LogicalSize } from "@tauri-apps/api/window";
 import { KIND_DOCUMENT } from "../core/types";
-import { fitWindowToContent, positionKeepingCenter, type Size } from "./fitWindow";
+import { clampPositionToWorkArea, fitWindowToContent, type Size } from "./fitWindow";
 import {
   loadMediaWindowMode, mediaWindowModeLabel, resolveMediaWindowMode, saveMediaWindowMode,
   shouldFitWindowToContent, shouldRememberWindowSize, toggleMediaWindowMode, type MediaWindowMode,
@@ -16,6 +16,24 @@ export function createWindowController(getKind: () => string | undefined, isSett
   let content: { width: number; height: number; chrome: Size } | null = null;
   let revision = 0;
   let saveTimer: number | undefined;
+  // Resize requests are serialized through a single in-flight slot: rapid
+  // navigation (holding an arrow key while browsing photos) fires many
+  // onContentSize reports back to back, and each resize spans several async
+  // geometry round-trips. Without serialization the setSize/setPosition pairs
+  // of overlapping resizes interleave — a stale resize can apply its size but
+  // have its position cancelled by the revision guard, leaving the window
+  // sized-but-not-recentered, and the next resize then centers on that wrong
+  // state. Coalescing keeps exactly one resize running and the newest request
+  // wins, so the final window is always sized AND centered consistently.
+  let pendingResize: { width: number; height: number; chrome: Size } | null = null;
+  let resizeRunning = false;
+
+  async function resize(width: number, height: number, chrome: Size) {
+    const request = ++revision;
+    pendingResize = { width, height, chrome };
+    void drainResize().catch(reportError);
+    return request;
+  }
 
   function sync() {
     const kind = getKind();
@@ -24,25 +42,73 @@ export function createWindowController(getKind: () => string | undefined, isSett
     for (const radio of radios) radio.checked = radio.value === mode;
   }
 
-  async function resize(width: number, height: number, chrome: Size) {
-    const request = ++revision;
+  async function drainResize() {
+    if (resizeRunning) return;
+    resizeRunning = true;
+    try {
+      while (pendingResize) {
+        const job = pendingResize;
+        pendingResize = null;
+        await resizeNow(job.width, job.height, job.chrome);
+      }
+    } finally {
+      resizeRunning = false;
+    }
+  }
+
+  async function resizeNow(width: number, height: number, chrome: Size) {
+    const request = revision;
     const win = getCurrentWindow();
     const scale = await win.scaleFactor();
+    if (request !== revision) return;
     const monitor = await currentMonitor();
     const work = monitor
       ? monitor.workArea.size.toLogical(monitor.scaleFactor)
       : { width: window.screen.availWidth, height: window.screen.availHeight };
-    const size = fitWindowToContent({ width, height }, chrome, work);
-    const position = (await win.outerPosition()).toLogical(scale);
-    const outer = (await win.outerSize()).toLogical(scale);
-    const inner = (await win.innerSize()).toLogical(scale);
-    const nextPosition = positionKeepingCenter(
-      { ...position, ...outer },
-      { width: size.width + outer.width - inner.width, height: size.height + outer.height - inner.height },
-    );
+    const workOrigin = monitor
+      ? monitor.workArea.position.toLogical(monitor.scaleFactor)
+      : { x: 0, y: 0 };
+    // Capture the window's current rectangle BEFORE resizing: the center the
+    // user currently sees is what must stay fixed. (Reading after setSize
+    // would observe the already-resized window at its old position, whose
+    // center has already drifted — centering on that would freeze the drift.)
+    const positionBefore = (await win.outerPosition()).toLogical(scale);
+    const outerBefore = (await win.outerSize()).toLogical(scale);
+    const innerBefore = (await win.innerSize()).toLogical(scale);
     if (request !== revision) return;
+    // The OS window frame (outer minus inner) is invisible chrome that sits
+    // outside the webview. fitWindowToContent subtracts it from the work area
+    // so the outer window still fits; without it a tall image would make the
+    // outer window taller than the work area and its bottom would be hidden
+    // under the taskbar.
+    const frame = {
+      width: outerBefore.width - innerBefore.width,
+      height: outerBefore.height - innerBefore.height,
+    };
+    const size = fitWindowToContent({ width, height }, chrome, work, { width: 240, height: 160 }, frame);
+    document.title = JSON.stringify({ content: { width, height }, work, frame, size, outerBefore, innerBefore });
+    const targetCenter = {
+      x: positionBefore.x + outerBefore.width / 2,
+      y: positionBefore.y + outerBefore.height / 2,
+    };
     await win.setSize(new LogicalSize(size.width, size.height));
-    if (request !== revision) return;
+    // Predict the outer size the resized window will have (same chrome, same
+    // monitor), then place it so its center coincides with the pre-resize
+    // center. The serialized queue guarantees no other resize interleaves
+    // between setSize and setPosition, so the pair lands atomically. Finally
+    // clamp the position to the work area: keeping the center is what makes
+    // navigation feel stable, but a tall/wide image centered on an
+    // off-center window would push the image off-screen (e.g. a portrait
+    // photo whose top ends up above the screen edge).
+    const outerAfter = {
+      width: size.width + frame.width,
+      height: size.height + frame.height,
+    };
+    const centered = {
+      x: Math.round(targetCenter.x - outerAfter.width / 2),
+      y: Math.round(targetCenter.y - outerAfter.height / 2),
+    };
+    const nextPosition = clampPositionToWorkArea(centered, outerAfter, { ...workOrigin, ...work });
     await win.setPosition(new LogicalPosition(nextPosition.x, nextPosition.y));
   }
 

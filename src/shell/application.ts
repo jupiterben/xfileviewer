@@ -18,6 +18,7 @@ import {
   resolveAppVersion,
 } from "./appVersion";
 import { createWheelPager, kindUsesWheelPaging } from "./wheelPager";
+import { shouldStartWindowDrag } from "./windowDrag";
 
 const host = document.querySelector<HTMLElement>("#viewer-host")!;
 const prevBtn = document.querySelector<HTMLButtonElement>("#prev")!;
@@ -170,6 +171,7 @@ function mountCurrent() {
       onEnded: () => go(1),
       onError: (message) => renderError(message),
       onNavigate: (step) => go(step),
+      onOpen: () => { void openWithDialog(); },
       isInteractionBlocked: associations.isInteractionBlocked,
       onToolbar: toolbar => (toolbar ?? workspace).append(mediaWindowBtn),
       onVolumePopup: (show, pos) => {
@@ -182,6 +184,23 @@ function mountCurrent() {
   }
   updateChrome();
   windowController.sync();
+}
+
+let openingDialog = false;
+async function openWithDialog() {
+  if (openingDialog || associations.isInteractionBlocked()) return;
+  openingDialog = true;
+  try {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const path = await open({ multiple: false, directory: false, filters: [{
+      name: "支持的文件", extensions: [...new Set(registry.extensionsWithPlugins().map(item => item.ext))],
+    }] });
+    if (typeof path === "string") await openPath(path);
+  } catch (error) {
+    renderError(`无法打开文件：${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    openingDialog = false;
+  }
 }
 
 async function openPath(path: string) {
@@ -261,9 +280,7 @@ prevBtn.addEventListener("click", () => go(-1));
 nextBtn.addEventListener("click", () => go(1));
 document.addEventListener("mousedown", (event) => {
   if (event.button !== 0 || associations.isInteractionBlocked()) return;
-  const target = event.target;
-  if (!(target instanceof Element)) return;
-  if (target.closest('button, input, select, textarea, a, label, [role="button"], [contenteditable="true"]')) return;
+  if (!shouldStartWindowDrag(event.target)) return;
   event.preventDefault();
   void getCurrentWindow().startDragging().catch((error) => {
     console.error("Unable to drag window", error);
@@ -282,6 +299,11 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (associations.isInteractionBlocked()) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
+    e.preventDefault();
+    void openWithDialog();
+    return;
+  }
   if (!sequence) return;
   const step = sequenceStepForKey(sequence.kindId, e.key);
   if (!step) return;

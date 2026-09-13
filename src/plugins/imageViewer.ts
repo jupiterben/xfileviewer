@@ -19,7 +19,7 @@ function mountImage(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
   img.addEventListener("load", () => {
     ctx.onContentSize?.(img.naturalWidth, img.naturalHeight);
   });
-  img.addEventListener("error", () => ctx.onError("无法解码图片"));
+  img.addEventListener("error", () => ctx.onError("无法加载图片：文件不可读或编码不受支持"));
   el.append(img);
   return {
     destroy() {

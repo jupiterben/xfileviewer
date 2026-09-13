@@ -1,5 +1,7 @@
 # Active Context
 
+图标：git 只跟踪 `src-tauri/icons/icon-source.png`。`tauri dev` / `tauri build` 前跑 `npm run prepare:icons`（`tauri icon`），按源图生成各平台图标。
+
 可多开：已去掉单实例锁，再双击文件会新开窗口，互不影响。向已有窗口拖放仍替换该窗口内容。Esc 只关当前窗口。
 
 Esc：查看/空状态关闭窗口退出；设置页先关掉设置；关联确认弹层不退出。Markdown 主题选择器打开时 Esc 仍先关掉选择器。

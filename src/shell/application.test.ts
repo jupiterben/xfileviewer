@@ -4,6 +4,7 @@ import type { ViewerContext, ViewerNavigation } from "../core/types";
 
 const mocks = vi.hoisted(() => ({
   contexts: [] as ViewerContext[],
+  openDialog: vi.fn<() => Promise<string | null>>(),
   navigation: vi.fn(),
   destroyed: vi.fn(),
   setTitle: vi.fn(async () => {}),
@@ -11,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   batch: undefined as undefined | { onmessage: (batch: { files: string[]; scanned: number; done: boolean }) => void },
 }));
 
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: mocks.openDialog }));
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (path: string) => `asset:${path}`,
   Channel: class { onmessage = () => {}; },
@@ -42,6 +44,7 @@ vi.mock("../plugins/builtin", () => ({
     viewers: [
       { id: "video", kindId: "video", extensions: ["mp4"] },
       { id: "image", kindId: "image", extensions: ["jpg"] },
+      { id: "model", kindId: "3dmodel", extensions: ["ply", "splat"] },
     ].map(descriptor => ({
       ...descriptor,
       mount(el: HTMLElement, ctx: ViewerContext) {
@@ -85,5 +88,16 @@ it("boots with corrupt settings, scans, navigates, docks tools and discards stal
   expect(document.querySelector("#media-window-mode")?.parentElement?.className).toBe("workspace");
   expect(document.querySelector(".workspace")?.classList.contains("video-viewing")).toBe(false);
   expect(warn).toHaveBeenCalled();
+  mocks.openDialog.mockResolvedValueOnce("/fixtures/model.ply");
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "o", ctrlKey: true, cancelable: true }));
+  await vi.waitFor(() => expect(mocks.contexts[mocks.contexts.length - 1]?.path).toBe("/fixtures/model.ply"));
+  expect(mocks.openDialog).toHaveBeenCalledWith(expect.objectContaining({
+    filters: [{ name: "支持的文件", extensions: expect.arrayContaining(["ply", "splat"]) }],
+  }));
+  const current = mocks.contexts.length;
+  mocks.openDialog.mockResolvedValueOnce(null);
+  mocks.contexts[mocks.contexts.length - 1]?.onOpen?.();
+  await vi.waitFor(() => expect(mocks.openDialog).toHaveBeenCalledTimes(2));
+  expect(mocks.contexts).toHaveLength(current);
   warn.mockRestore();
 });
