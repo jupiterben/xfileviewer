@@ -4966,6 +4966,7 @@ dependencies = [
 name = "xfileviewer"
 version = "0.1.10"
 dependencies = [
+ "gtk",
  "libloading 0.8.9",
  "percent-encoding",
  "serde",

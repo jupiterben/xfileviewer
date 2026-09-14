@@ -1,3 +1,5 @@
+import { mount, unmount } from "svelte";
+import VideoPlayer from "../../ui/VideoPlayer.svelte";
 import { emit, listen } from "@tauri-apps/api/event";
 import { isTauri } from "../../shell/platform";
 import { formatClock } from "../../shell/formatClock";
@@ -71,92 +73,22 @@ export function createPlayerShell(ctx: ViewerContext): PlayerShell {
   let destroyed = false;
   let lastAudibleVolume = audio.lastAudibleVolume;
 
-  const wrap = document.createElement("div");
-  wrap.className = "video-player";
-
-  const surface = document.createElement("div");
-  surface.className = "video-surface";
-
-  const status = document.createElement("div");
-  status.className = "video-status";
-  status.setAttribute("role", "status");
-  status.hidden = true;
-
-  const bar = document.createElement("div");
-  bar.className = "video-bar";
-
-  // Sequence navigation lives in the control bar because the native backend
-  // covers the whole video surface with an HWND: anything the WebView draws
-  // on top of the video (window-level prev/next buttons, the window-mode
-  // toggle) is invisible there, while the bar below stays reachable.
-  const navPrev = document.createElement("button");
-  navPrev.type = "button";
-  navPrev.className = "video-nav video-nav-prev";
-  navPrev.setAttribute("aria-label", "上一个");
-  navPrev.textContent = "‹";
-  navPrev.disabled = true;
-
-  const navNext = document.createElement("button");
-  navNext.type = "button";
-  navNext.className = "video-nav video-nav-next";
-  navNext.setAttribute("aria-label", "下一个");
-  navNext.textContent = "›";
-  navNext.disabled = true;
-
-  const playBtn = document.createElement("button");
-  playBtn.type = "button";
-  playBtn.className = "video-play";
-  playBtn.setAttribute("aria-label", "播放/暂停");
-  playBtn.textContent = "▶";
-
-  // ‹ ▶ › sit in their own tight cluster; the bar's wider gap only separates
-  // groups (nav cluster, time, seek, volume…), not these buttons.
-  const navGroup = document.createElement("div");
-  navGroup.className = "video-nav-group";
-  navGroup.append(navPrev, playBtn, navNext);
-
-  const currentEl = document.createElement("span");
-  currentEl.className = "video-time";
-  currentEl.textContent = "0:00";
-
-  const seek = document.createElement("input");
-  seek.type = "range";
-  seek.className = "video-seek";
-  seek.min = "0";
-  seek.max = "0";
-  seek.step = "0.1";
-  seek.value = "0";
-  seek.setAttribute("aria-label", "播放进度");
-
-  const durationEl = document.createElement("span");
-  durationEl.className = "video-time";
-  durationEl.textContent = "0:00";
-
-  const muteBtn = document.createElement("button");
-  muteBtn.type = "button";
-  muteBtn.className = "video-mute";
-
-  const volume = document.createElement("input");
-  volume.type = "range";
-  volume.className = "video-volume";
-  volume.min = "0";
-  volume.max = "100";
-  volume.step = "1";
-  volume.setAttribute("aria-label", "音量");
-
-  const volumeValue = document.createElement("span");
-  volumeValue.className = "video-volume-value";
-  volumeValue.setAttribute("aria-hidden", "true");
-
-  const volumeWrap = document.createElement("div");
-  volumeWrap.className = "video-volume-wrap";
-  volumeWrap.setAttribute("role", "group");
-  volumeWrap.setAttribute("aria-label", "音量控制");
-  const volumePop = document.createElement("div");
-  volumePop.className = "video-volume-pop";
-  volumePop.append(volume, volumeValue);
-  volumeWrap.append(muteBtn, volumePop);
-
+  const target = document.createElement("div");
+  const view = mount(VideoPlayer, { target });
+  const wrap = target.querySelector<HTMLElement>(".video-player")!;
+  const surface = wrap.querySelector<HTMLElement>(".video-surface")!;
+  const status = wrap.querySelector<HTMLElement>(".video-status")!;
+  const bar = wrap.querySelector<HTMLElement>(".video-bar")!;
+  const navPrev = wrap.querySelector<HTMLButtonElement>(".video-nav-prev")!;
+  const navNext = wrap.querySelector<HTMLButtonElement>(".video-nav-next")!;
+  const playBtn = wrap.querySelector<HTMLButtonElement>(".video-play")!;
+  const currentEl = wrap.querySelector<HTMLElement>(".video-current")!;
+  const durationEl = wrap.querySelector<HTMLElement>(".video-duration")!;
+  const seek = wrap.querySelector<HTMLInputElement>(".video-seek")!;
+  const muteBtn = wrap.querySelector<HTMLButtonElement>(".video-mute")!;
+  const volume = wrap.querySelector<HTMLInputElement>(".video-volume")!;
+  const volumeValue = wrap.querySelector<HTMLElement>(".video-volume-value")!;
+  const volumeWrap = wrap.querySelector<HTMLElement>(".video-volume-wrap")!;
   let popupMode: "inline" | "overlay" = "inline";
   let barHover = false;
   let overlayHover = false;
@@ -199,8 +131,7 @@ export function createPlayerShell(ctx: ViewerContext): PlayerShell {
     }).then(keep, () => undefined);
   }
 
-  bar.append(navGroup, currentEl, seek, durationEl, volumeWrap);
-  wrap.append(surface, status, bar);
+
   ctx.onToolbar?.(bar);
 
   function render() {
@@ -384,7 +315,7 @@ export function createPlayerShell(ctx: ViewerContext): PlayerShell {
       unlisteners.forEach((unlisten) => unlisten());
       window.removeEventListener("keydown", onKey);
       ctx.onToolbar?.(null);
-      wrap.remove();
+      void unmount(view);
     },
   };
 }

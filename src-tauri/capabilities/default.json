@@ -19,6 +19,7 @@
     "core:webview:allow-set-webview-focus",
     "opener:default",
     "dialog:allow-open",
+    "dialog:allow-message",
     "allow-shell-commands",
     "allow-video-pipeline"
   ]

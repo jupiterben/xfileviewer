@@ -1,8 +1,10 @@
+import { mount, flushSync } from "svelte";
+import AssociationList from "../ui/AssociationList.svelte";
 import { invoke } from "@tauri-apps/api/core";
 import type { PluginRegistry } from "../core/registry";
 import { associationDecision, rememberAssociation, type AssociationSettings } from "./associations";
 import {
-  associationChanges, buildAssociationRows, groupAssociationRows, mergeAssociationState,
+  associationChanges, buildAssociationRows, mergeAssociationState,
   setAssociationRowError, setKindGranted, setRowGranted, type AssociationRow,
 } from "./associationSettings";
 
@@ -28,6 +30,11 @@ export function createAssociationController(
   let rows: AssociationRow[] = [];
   let applying = false;
 
+  const view = mount(AssociationList, { target: list, props: {
+    onKind: (kind, checked) => { rows = setKindGranted(rows, kind, checked); render(); },
+    onRow: (ext, checked) => { rows = setRowGranted(rows, ext, checked); render(); },
+  } });
+
   async function refresh() {
     rows = buildAssociationRows(registry.extensionsWithPlugins());
     try {
@@ -43,46 +50,7 @@ export function createAssociationController(
   }
 
   function render() {
-    list.replaceChildren();
-    for (const group of groupAssociationRows(rows)) {
-      const heading = document.createElement("label");
-      heading.className = "assoc-kind";
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.checked = group.checkState === "all";
-      input.indeterminate = group.checkState === "mixed";
-      input.disabled = applying;
-      input.addEventListener("change", () => {
-        rows = setKindGranted(rows, group.kindId, input.checked);
-        render();
-      });
-      const name = document.createElement("span");
-      name.textContent = group.label;
-      heading.append(input, name);
-      list.append(heading);
-      const wrap = document.createElement("div");
-      wrap.className = "assoc-exts";
-      for (const row of group.rows) {
-        const label = document.createElement("label");
-        label.className = "assoc-row";
-        label.title = row.error || row.pluginName;
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = row.granted;
-        checkbox.disabled = applying;
-        checkbox.addEventListener("change", () => {
-          rows = setRowGranted(rows, row.ext, checkbox.checked);
-          render();
-        });
-        const ext = document.createElement("span");
-        ext.className = "assoc-ext";
-        ext.textContent = `.${row.ext}`;
-        label.append(checkbox, ext);
-        if (row.error) label.classList.add("is-error");
-        wrap.append(label);
-      }
-      list.append(wrap);
-    }
+    flushSync(() => view.update(rows, applying));
     const changes = associationChanges(appliedRows, rows);
     apply.disabled = applying || (changes.grant.length === 0 && changes.revoke.length === 0);
   }

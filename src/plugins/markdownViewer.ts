@@ -1,3 +1,6 @@
+import { mount, unmount, flushSync } from "svelte";
+import MarkdownViewer from "../ui/MarkdownViewer.svelte";
+import MarkdownChoices from "../ui/MarkdownChoices.svelte";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { KIND_DOCUMENT } from "../core/types";
@@ -51,21 +54,13 @@ function mountMarkdown(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
   applyTheme(el, theme);
   applyWidth(el, width);
 
-  const body = document.createElement("div");
-  body.className = "markdown-body";
-  el.append(body);
-
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.className = "md-theme-toggle";
-  el.append(toggle);
-
-  const picker = document.createElement("div");
-  picker.className = "md-theme-picker";
-  picker.hidden = true;
-  picker.setAttribute("role", "listbox");
-  picker.setAttribute("aria-label", "Markdown 主题与宽度");
-  el.append(picker);
+  const view = mount(MarkdownViewer, { target: el });
+  const body = el.querySelector<HTMLElement>(".markdown-body")!;
+  const toggle = el.querySelector<HTMLButtonElement>(".md-theme-toggle")!;
+  const picker = el.querySelector<HTMLElement>(".md-theme-picker")!;
+  const choices = mount(MarkdownChoices, { target: picker, props: {
+    onTheme: next => { void pickTheme(next); }, onWidth: next => pickWidth(next),
+  } });
 
   let cancelled = false;
   let mermaidDone = false;
@@ -75,47 +70,8 @@ function mountMarkdown(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
     toggle.textContent = `${theme.label} · ${width.label}`;
   }
 
-  function choiceButton(
-    label: string,
-    index: number,
-    current: boolean,
-    onPick: () => void,
-  ) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.setAttribute("role", "option");
-    btn.setAttribute("aria-selected", String(index === selected));
-    if (current) btn.dataset.current = "true";
-    btn.textContent = label;
-    btn.addEventListener("click", onPick);
-    return btn;
-  }
-
-  function sectionLabel(text: string) {
-    const label = document.createElement("div");
-    label.className = "md-theme-picker-label";
-    label.textContent = text;
-    return label;
-  }
-
   function renderPicker() {
-    picker.replaceChildren(
-      sectionLabel("主题"),
-      ...MARKDOWN_THEMES.map((item, index) =>
-        choiceButton(item.label, index, item.id === theme.id, () =>
-          void pickTheme(item),
-        ),
-      ),
-      sectionLabel("宽度"),
-      ...MARKDOWN_WIDTHS.map((item, index) =>
-        choiceButton(
-          item.label,
-          MARKDOWN_THEMES.length + index,
-          item.id === width.id,
-          () => pickWidth(item),
-        ),
-      ),
-    );
+    flushSync(() => choices.update(selected, theme.id, width.id));
   }
 
   function setPickerOpen(open: boolean) {
@@ -229,9 +185,8 @@ function mountMarkdown(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
       cancelled = true;
       window.removeEventListener("keydown", onKey, true);
       body.removeEventListener("click", onClick);
-      toggle.remove();
-      picker.remove();
-      body.remove();
+      void unmount(choices);
+      void unmount(view);
       el.classList.remove("markdown-stage");
       delete el.dataset.mdTheme;
       delete el.dataset.mdWidth;

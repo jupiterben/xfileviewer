@@ -3,6 +3,8 @@ identifier = "allow-shell-commands"
 description = "Shell commands for opening files, listing folders, plugins, and associations"
 commands.allow = [
   "take_launch_path",
+  "choose_file_application",
+  "menu_popup_chrome_offset",
   "parent_dir",
   "list_dir_files",
   "load_association_settings",

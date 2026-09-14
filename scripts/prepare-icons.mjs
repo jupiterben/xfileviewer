@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const source = resolve(root, 'src-tauri/icons/icon-source.png');
+const source = resolve(root, 'src-tauri/icons/icon-source.svg');
 const outDir = resolve(root, 'src-tauri/icons');
 const outputs = [
   resolve(outDir, '32x32.png'),
@@ -16,7 +16,7 @@ const outputs = [
 ];
 
 if (!existsSync(source)) {
-  throw new Error('Missing src-tauri/icons/icon-source.png');
+  throw new Error('Missing src-tauri/icons/icon-source.svg');
 }
 
 const sourceMtime = statSync(source).mtimeMs;
@@ -31,7 +31,7 @@ if (!existsSync(cli)) {
   throw new Error('Missing @tauri-apps/cli. Run npm ci first.');
 }
 
-console.log('Generating app icons from icon-source.png…');
+console.log('Generating app icons from icon-source.svg…');
 execFileSync(process.execPath, [cli, 'icon', source, '-o', outDir], {
   stdio: 'inherit',
   cwd: root,

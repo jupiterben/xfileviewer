@@ -1,3 +1,5 @@
+import { mount, unmount, flushSync } from "svelte";
+import ModelInfo from "../../ui/ModelInfo.svelte";
 import * as THREE from "three";
 
 export interface ModelStats {
@@ -43,26 +45,13 @@ export function formatDimensions(box: THREE.Box3): string {
 }
 
 export function createInfoPanel() {
-  const panel = document.createElement("aside");
-  panel.className = "model-info";
-  panel.dataset.noWindowDrag = "";
-  const title = document.createElement("h2");
-  title.textContent = "模型信息";
-  const table = document.createElement("table");
-  panel.append(title, table);
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.className = "model-info-toggle";
-  function sync() {
-    toggle.textContent = panel.hidden ? "‹" : "›";
-    toggle.title = panel.hidden ? "展开模型信息" : "收起模型信息";
-    toggle.setAttribute("aria-label", toggle.title);
-    toggle.setAttribute("aria-expanded", String(!panel.hidden));
-  }
-  toggle.onclick = () => { panel.hidden = !panel.hidden; sync(); };
-  sync();
+  const target = document.createElement("div");
+  const view = mount(ModelInfo, { target });
+  const panel = target.querySelector<HTMLElement>(".model-info")!;
+  const toggle = target.querySelector<HTMLButtonElement>(".model-info-toggle")!;
   return {
     panel, toggle,
+    destroy() { void unmount(view); },
     update(name: string, bytes: number, format: string, box: THREE.Box3, stats: ModelStats) {
       const rows: Array<[string, string | number]> = [
         ["文件名", name], ["文件大小", formatBytes(bytes)], ["格式", format],
@@ -70,16 +59,7 @@ export function createInfoPanel() {
         ["顶点", stats.vertices], ["三角形", Math.round(stats.triangles)],
         ["高斯点", stats.splats || "—"], ["动画", stats.animations],
       ];
-      table.replaceChildren(...rows.map(([label, value]) => {
-        const row = document.createElement("tr");
-        const heading = document.createElement("th");
-        heading.scope = "row";
-        heading.textContent = label;
-        const cell = document.createElement("td");
-        cell.textContent = typeof value === "number" ? value.toLocaleString() : value;
-        row.append(heading, cell);
-        return row;
-      }));
+      flushSync(() => view.update(rows));
     },
   };
 }

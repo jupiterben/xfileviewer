@@ -1,7 +1,9 @@
+import { mount, unmount } from "svelte";
+import EmptyState from "../ui/EmptyState.svelte";
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, Window } from "@tauri-apps/api/window";
 import { PluginRegistry } from "../core/registry";
 import { basename } from "../core/path";
 import { buildSequence, move, createSequenceAppender } from "../core/sequence";
@@ -19,6 +21,8 @@ import {
 } from "./appVersion";
 import { createWheelPager, kindUsesWheelPaging } from "./wheelPager";
 import { shouldStartWindowDrag } from "./windowDrag";
+
+import { createFileContextMenu } from "./fileContextMenu";
 
 const host = document.querySelector<HTMLElement>("#viewer-host")!;
 const prevBtn = document.querySelector<HTMLButtonElement>("#prev")!;
@@ -46,6 +50,7 @@ const associations = createAssociationController(registry, open => {
 });
 const windowController = createWindowController(() => sequence?.kindId, associations.isOpen);
 let appVersionLabel = "";
+let emptyView: ReturnType<typeof mount> | undefined;
 
 function setWindowTitle(text: string) {
   const title = text.trim() || " ";
@@ -67,26 +72,9 @@ function showEmpty(message: string) {
   destroyViewer();
   sequence = null;
   host.replaceChildren();
-  const wrap = document.createElement("div");
-  wrap.className = "empty-wrap";
-  const p = document.createElement("p");
-  p.className = "empty";
-  p.textContent = message;
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "empty-settings";
-  btn.textContent = "设置";
-  btn.addEventListener("click", () => {
-    void associations.open();
-  });
-  wrap.append(p, btn);
-  if (appVersionLabel) {
-    const ver = document.createElement("p");
-    ver.className = "app-version";
-    ver.textContent = appVersionLabel;
-    wrap.append(ver);
-  }
-  host.append(wrap);
+  emptyView = mount(EmptyState, { target: host, props: {
+    message, version: appVersionLabel, onSettings: () => { void associations.open(); },
+  } });
   setWindowTitle("");
   syncNavButtons(true);
   windowController.sync();
@@ -108,6 +96,7 @@ function syncNavButtons(disabled: boolean, meta?: { position: string; scanStatus
 }
 
 function destroyViewer() {
+  if (emptyView) { void unmount(emptyView); emptyView = undefined; }
   viewerSession.destroy();
   windowController.clearContent();
   workspace.classList.remove("video-viewing");
@@ -153,6 +142,7 @@ function updateChrome() {
 function mountCurrent() {
   const path = currentPath();
   if (!sequence || !path) return;
+  if (emptyView) { void unmount(emptyView); emptyView = undefined; }
   const viewer = registry.viewerFor(path);
   host.replaceChildren();
   if (!viewer) {
@@ -324,6 +314,14 @@ window.addEventListener(
 );
 
 export async function bootApplication() {
+  const showFileMenu = createFileContextMenu(() => associations.isInteractionBlocked() ? null : currentPath());
+  document.addEventListener("contextmenu", event => {
+    void showFileMenu({ x: event.clientX, y: event.clientY });
+  }, { capture: true });
+  await listen<{ x: number; y: number }>("file-context-menu", async event => {
+    const owner = await Window.getByLabel("video-overlay");
+    if (owner) await showFileMenu(event.payload, owner);
+  });
   appVersionLabel = await resolveAppVersion();
   const versionEl = document.querySelector<HTMLElement>("#app-version");
   if (versionEl && appVersionLabel) {

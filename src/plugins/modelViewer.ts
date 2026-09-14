@@ -1,3 +1,5 @@
+import { mount, unmount } from "svelte";
+import ModelViewer from "../ui/ModelViewer.svelte";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Viewer } from "../core/types";
@@ -14,29 +16,20 @@ export function modelViewer(): Viewer {
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.outputColorSpace = THREE.SRGBColorSpace;
-      const root = document.createElement("div");
-      root.className = "model-viewer";
-      const viewport = document.createElement("div");
-      viewport.className = "model-viewport";
-      viewport.dataset.noWindowDrag = "";
+      const view = mount(ModelViewer, { target: el, props: {
+        name: basename(ctx.path), path: ctx.path, onOpen: ctx.onOpen,
+        onReset: () => reset(), onRotate: checked => { controls.autoRotate = checked; },
+        onWireframe: checked => applyWireframe(checked),
+      } });
+      const root = el.querySelector<HTMLElement>(".model-viewer")!;
+      const viewport = root.querySelector<HTMLElement>(".model-viewport")!;
+      const status = root.querySelector<HTMLElement>(".model-status")!;
+      const loading = root.querySelector<HTMLElement>(".model-loading")!;
+      const wireframeInput = root.querySelector<HTMLInputElement>(".model-wireframe")!;
       renderer.domElement.setAttribute("aria-label", "3D 模型：拖动旋转，右键平移，滚轮缩放");
-      viewport.append(renderer.domElement);
-      const toolbar = document.createElement("div");
-      toolbar.className = "model-toolbar";
-      const status = document.createElement("span");
-      status.textContent = "正在加载模型…";
-      status.setAttribute("role", "status");
-      const main = document.createElement("div");
-      main.className = "model-main";
+      viewport.prepend(renderer.domElement);
       const info = createInfoPanel();
-      main.append(viewport, info.toggle, info.panel);
-      root.append(toolbar, main, status);
-      status.className = "model-status";
-      const loading = document.createElement("div");
-      loading.className = "model-loading";
-      loading.textContent = "正在加载模型…";
-      viewport.append(loading);
-      el.append(root);
+      root.querySelector(".model-main")!.append(info.toggle, info.panel);
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x1e1e22);
       scene.add(new THREE.AmbientLight(0xffffff, 0.6));
@@ -69,33 +62,6 @@ export function modelViewer(): Viewer {
         controls.maxDistance = camera.far / 2;
         controls.update();
       }
-      if (ctx.onOpen) {
-        const openButton = document.createElement("button");
-        openButton.type = "button";
-        openButton.textContent = "打开";
-        openButton.title = "打开模型 (Ctrl/Cmd+O)";
-        openButton.onclick = () => ctx.onOpen?.();
-        toolbar.append(openButton);
-      }
-      const fileName = document.createElement("span");
-      fileName.className = "model-file-name";
-      fileName.textContent = basename(ctx.path);
-      fileName.title = ctx.path;
-      toolbar.append(fileName);
-      const resetButton = document.createElement("button");
-      resetButton.textContent = "重置视角";
-      resetButton.onclick = reset;
-      toolbar.append(resetButton);
-      function toggle(label: string, change: (checked: boolean) => void) {
-        const wrapper = document.createElement("label");
-        const input = document.createElement("input");
-        input.type = "checkbox";
-        input.onchange = () => change(input.checked);
-        wrapper.append(input, label);
-        toolbar.append(wrapper);
-        return input;
-      }
-      toggle("自动旋转", checked => { controls.autoRotate = checked; });
       let wireframe = false;
       function applyWireframe(checked: boolean) {
         wireframe = checked;
@@ -106,7 +72,6 @@ export function modelViewer(): Viewer {
           }
         });
       }
-      const wireframeInput = toggle("线框", applyWireframe);
       function resize() {
         const width = Math.max(viewport.clientWidth, 1);
         const height = Math.max(viewport.clientHeight, 1);
@@ -160,7 +125,8 @@ export function modelViewer(): Viewer {
           scene.clear();
           renderer.dispose();
           renderer.forceContextLoss();
-          root.remove();
+          info.destroy();
+          void unmount(view);
         },
       };
     },

@@ -42,3 +42,6 @@ windows = { version = "0.61", features = [
 ] }
 # Direct dep so the `#[implement]` macro's emitted `windows_core::` paths resolve.
 windows-core = "0.61"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"

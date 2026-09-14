@@ -638,3 +638,6 @@ html.overlay-mode .scan-status {
   opacity: 0.4;
   cursor: default;
 }
+
+/* Svelte root fills the desktop webview without adding a layout layer. */
+#app { display: contents; }

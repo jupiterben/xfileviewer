@@ -1,4 +1,5 @@
 mod directory;
+mod file_actions;
 mod hls_transcoder;
 mod media_server;
 #[cfg(windows)]
@@ -56,6 +57,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             launch::take_launch_path,
+            file_actions::choose_file_application,
+            file_actions::menu_popup_chrome_offset,
             scan::parent_dir,
             scan::list_dir_files,
             settings::load_association_settings,

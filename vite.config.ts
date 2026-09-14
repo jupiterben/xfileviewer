@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -10,6 +11,10 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
+  // Controllers hold native DOM references; reload the page when templates change.
+  plugins: [svelte({ hot: false })],
+  // Component tests execute the browser runtime inside jsdom.
+  resolve: { conditions: ["browser"] },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },

@@ -1,4 +1,11 @@
+import { mount } from "svelte";
+import App from "./ui/App.svelte";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+
+// Disable the webview's default menu in both application and overlay windows.
+document.addEventListener("contextmenu", event => event.preventDefault(), { capture: true });
+
+mount(App, { target: document.querySelector<HTMLElement>("#app")! });
 
 // Select the window before loading modules that install DOM/event handlers.
 const boot = getCurrentWebview().label === "video-overlay"

@@ -1,3 +1,5 @@
+import { mount } from "svelte";
+import VideoOverlay from "../ui/VideoOverlay.svelte";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
@@ -22,26 +24,16 @@ interface PopupState {
  * behaves like the video area it covers.
  */
 export async function bootVideoOverlay(): Promise<void> {
+  document.addEventListener("contextmenu", event => {
+    void emit("file-context-menu", { x: event.clientX, y: event.clientY }).catch(console.error);
+  }, { capture: true });
   document.documentElement.classList.add("overlay-mode");
 
-  const layer = document.createElement("div");
-  layer.className = "video-overlay-layer";
-  const pop = document.createElement("div");
-  pop.className = "video-overlay-pop";
-  const volume = document.createElement("input");
-  volume.type = "range";
-  volume.className = "video-overlay-volume";
-  volume.min = "0";
-  volume.max = "100";
-  volume.step = "1";
-  volume.value = "100";
-  volume.setAttribute("aria-label", "音量");
-  const value = document.createElement("span");
-  value.className = "video-volume-value";
-  value.setAttribute("aria-hidden", "true");
-  pop.append(volume, value);
-  layer.append(pop);
-  document.body.append(layer);
+  mount(VideoOverlay, { target: document.body });
+  const layer = document.querySelector<HTMLElement>(".video-overlay-layer")!;
+  const pop = layer.querySelector<HTMLElement>(".video-overlay-pop")!;
+  const volume = layer.querySelector<HTMLInputElement>(".video-overlay-volume")!;
+  const value = layer.querySelector<HTMLElement>(".video-volume-value")!;
 
   let muted = false;
   let dragging = false;

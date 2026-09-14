@@ -86,7 +86,6 @@ export function createWindowController(getKind: () => string | undefined, isSett
       height: outerBefore.height - innerBefore.height,
     };
     const size = fitWindowToContent({ width, height }, chrome, work, { width: 240, height: 160 }, frame);
-    document.title = JSON.stringify({ content: { width, height }, work, frame, size, outerBefore, innerBefore });
     const targetCenter = {
       x: positionBefore.x + outerBefore.width / 2,
       y: positionBefore.y + outerBefore.height / 2,

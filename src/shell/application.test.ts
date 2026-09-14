@@ -1,3 +1,5 @@
+import { mount } from "svelte";
+import App from "../ui/App.svelte";
 // @vitest-environment jsdom
 import { expect, it, vi } from "vitest";
 import type { ViewerContext, ViewerNavigation } from "../core/types";
@@ -65,12 +67,8 @@ vi.mock("../plugins/builtin", () => ({
 
 it("boots with corrupt settings, scans, navigates, docks tools and discards stale viewer events", async () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-  document.body.innerHTML = `
-    <div class="workspace"><div id="viewer-host"></div>
-      <button id="prev"></button><button id="next"></button><button id="media-window-mode"></button>
-    </div>
-    <div id="settings" hidden><div id="settings-list"></div><button id="settings-back"></button><button id="settings-apply"></button></div>
-    <div id="assoc-overlay" hidden><span id="assoc-text"></span><button id="assoc-yes"></button><button id="assoc-no"></button></div>`;
+  document.body.replaceChildren();
+  mount(App, { target: document.body });
   const { bootApplication } = await import("./application");
   await expect(bootApplication()).resolves.toBeUndefined();
   expect(mocks.contexts[0].path).toBe("/fixtures/first.mp4");
