@@ -41,7 +41,7 @@ export default defineConfig(async () => ({
     },
   },
   test: {
-    include: ["src/**/*.test.ts"],
+    include: ["test/**/*.test.ts"],
     pool: "threads",
     // Let jsdom own storage instead of inheriting Node's native Web Storage.
     execArgv: ["--no-experimental-webstorage"],

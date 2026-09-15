@@ -1,5 +1,7 @@
 # Active Context
 
+前端 Vitest 用例在仓库根 `test/`，目录镜像 `src/`（如 `src/shell/foo.ts` → `test/shell/foo.test.ts`）。`vite.config.ts` 的 `test.include` 为 `test/**/*.test.ts`。
+
 图标：git 只跟踪 `assets/icon-source.svg`。`tauri dev` / `tauri build` 前跑 `npm run prepare:icons`（`tauri icon`），按源图生成各平台图标到 `src-tauri/icons/`（该目录已 gitignore）。
 
 可多开：已去掉单实例锁，再双击文件会新开窗口，互不影响。向已有窗口拖放仍替换该窗口内容。Esc 只关当前窗口。
