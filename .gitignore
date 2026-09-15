@@ -27,8 +27,7 @@ dist-ssr
 
 .tmp-imgtest
 
-# Generated Tauri icons (`npm run prepare:icons` from icon-source.png)
+# Generated Tauri icons (`npm run prepare:icons` from assets/icon-source.svg)
 src-tauri/icons/*
-!src-tauri/icons/icon-source.png
 src-tauri/icons.bak.*/
 

@@ -29,7 +29,7 @@ export function createViewerSession() {
         onEnded: () => { if (active()) ctx.onEnded(); },
         onError: message => { if (active()) ctx.onError(message); },
         onNavigate: step => { if (active()) ctx.onNavigate?.(step); },
-        onContentSize: (...args) => { if (active()) ctx.onContentSize?.(...args); },
+        onContentSize: (...args) => { if (active()) return ctx.onContentSize?.(...args); },
         onToolbar: toolbar => { if (active()) ctx.onToolbar?.(toolbar); },
         onVolumePopup: (...args) => { if (active()) ctx.onVolumePopup?.(...args); },
         isInteractionBlocked: () => !active() || !!ctx.isInteractionBlocked?.(),

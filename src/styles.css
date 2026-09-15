@@ -47,7 +47,9 @@ body {
   position: absolute;
   top: 50%;
   z-index: 2;
-  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
   width: 44px;
   height: 88px;
   padding: 0;
@@ -56,7 +58,7 @@ body {
   background: rgb(0 0 0 / 22%);
   color: rgb(255 255 255 / 82%);
   font-size: 36px;
-  line-height: 88px;
+  line-height: 1;
   cursor: pointer;
   opacity: 0.55;
 }
@@ -430,6 +432,10 @@ html.overlay-mode .scan-status {
   height: 100%;
   object-fit: contain;
   object-position: center;
+}
+
+.image-pending {
+  visibility: hidden;
 }
 
 .empty,

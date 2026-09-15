@@ -22,7 +22,7 @@ export interface ViewerContext {
     width: number,
     height: number,
     chrome?: { width: number; height: number },
-  ) => void;
+  ) => void | Promise<void>;
   /**
    * Sequence navigation from inside the viewer (e.g. the video control bar).
    * The native video backend draws over the whole surface, so the floating

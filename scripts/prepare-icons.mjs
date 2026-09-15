@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const source = resolve(root, 'src-tauri/icons/icon-source.svg');
+const source = resolve(root, 'assets/icon-source.svg');
 const outDir = resolve(root, 'src-tauri/icons');
 const outputs = [
   resolve(outDir, '32x32.png'),
@@ -16,7 +16,7 @@ const outputs = [
 ];
 
 if (!existsSync(source)) {
-  throw new Error('Missing src-tauri/icons/icon-source.svg');
+  throw new Error('Missing assets/icon-source.svg');
 }
 
 const sourceMtime = statSync(source).mtimeMs;

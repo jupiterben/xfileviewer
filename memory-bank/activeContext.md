@@ -1,6 +1,6 @@
 # Active Context
 
-图标：git 只跟踪 `src-tauri/icons/icon-source.png`。`tauri dev` / `tauri build` 前跑 `npm run prepare:icons`（`tauri icon`），按源图生成各平台图标。
+图标：git 只跟踪 `assets/icon-source.svg`。`tauri dev` / `tauri build` 前跑 `npm run prepare:icons`（`tauri icon`），按源图生成各平台图标到 `src-tauri/icons/`（该目录已 gitignore）。
 
 可多开：已去掉单实例锁，再双击文件会新开窗口，互不影响。向已有窗口拖放仍替换该窗口内容。Esc 只关当前窗口。
 
@@ -9,6 +9,10 @@ Esc：查看/空状态关闭窗口退出；设置页先关掉设置；关联确�
 系统窗口标题栏显示当前文件名：前端同步 `document.title` 与 Tauri `setTitle`；启动/二次打开时 Rust 也会立刻设标题。空状态留空，设置页显示「设置」。
 
 视频画面在窗口内 contain，控制条高度计入适应尺寸；不出现垂直滚动条。
+
+首次打开图片：等窗口 `setSize`/`setPosition` 完成后再去掉 `image-pending`，避免 WebViewGTK 在程序化改尺寸后不重算 object-fit，图停在默认窗口的旧位置。
+
+图片左右翻页按钮：`top: 50%` 配 `translateY(-50%)` 垂直居中，贴窗口左右各 10px。不要用 `translateX(-50%)`（会把上一张再往左、下一张相对右缘错位）。
 
 图片/视频窗口有两种模式，默认「适应尺寸」：
 - 适应尺寸：窗口跟着当前媒体分辨率走（超出工作区则缩小），缩放时保持窗口中心点不动

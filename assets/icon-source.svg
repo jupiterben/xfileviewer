@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <title>Eye icon</title>
+  <defs>
+    <linearGradient id="background" x1="90" y1="20" x2="930" y2="1010" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#41AD99"/>
+      <stop offset=".5" stop-color="#269E88"/>
+      <stop offset="1" stop-color="#208E7F"/>
+    </linearGradient>
+    <linearGradient id="iris" x1="355" y1="355" x2="670" y2="665" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#29AA91"/>
+      <stop offset=".45" stop-color="#239EBC"/>
+      <stop offset="1" stop-color="#347CE4"/>
+    </linearGradient>
+    <linearGradient id="pupil" x1="465" y1="437" x2="560" y2="593" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0E1934"/>
+      <stop offset="1" stop-color="#052C40"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#064D44" flood-opacity=".35"/>
+    </filter>
+  </defs>
+  <g transform="translate(64 64) scale(0.875)">
+    <rect width="1024" height="1024" rx="178" fill="url(#background)"/>
+    <g filter="url(#shadow)">
+      <path d="M132 512C225 372 370 279 512 279C654 279 799 372 892 512C799 652 654 745 512 745C370 745 225 652 132 512Z" stroke="#FEFFFF" stroke-width="46" stroke-linejoin="round"/>
+      <circle cx="512" cy="512" r="214" fill="url(#iris)" stroke="#FEFFFF" stroke-width="35"/>
+    </g>
+    <circle cx="512" cy="512" r="85.5" fill="url(#pupil)"/>
+    <circle cx="458.5" cy="456.5" r="39.5" fill="#F6F4E7" filter="url(#shadow)"/>
+  </g>
+</svg>

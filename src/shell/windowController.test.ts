@@ -70,8 +70,7 @@ it("leaves room for the OS window frame so the outer window fits the work area",
   win.innerSize.mockResolvedValue({ toLogical: () => ({ width: 1100, height: 720 }) });
   win.outerPosition.mockResolvedValue({ toLogical: () => ({ x: 410, y: 180 }) });
   const controller = createWindowController(() => "image", () => false);
-  controller.reportContentSize(300, 3000);
-  await new Promise(resolve => setTimeout(resolve, 0));
+  await controller.reportContentSize(300, 3000);
   const calls = win.setSize.mock.calls;
   const [size] = calls[calls.length - 1]!;
   expect(size).toEqual(expect.objectContaining({ width: 240, height: 1060 }));
@@ -81,6 +80,17 @@ it("leaves room for the OS window frame so the outer window fits the work area",
   expect(position).toEqual(expect.objectContaining({ x: 840, y: 0 }));
 });
 
+it("does not resolve the first content-size report until the window is placed", async () => {
+  let placed = false;
+  win.setPosition.mockImplementation(async () => { placed = true; });
+  const controller = createWindowController(() => "image", () => false);
+  const settled = controller.reportContentSize(640, 480);
+  expect(placed).toBe(false);
+  await settled;
+  expect(placed).toBe(true);
+  expect(win.setSize).toHaveBeenCalled();
+});
+
 it("clamps the centered position so a tall image stays fully on screen", async () => {
   // Window center is (550, 360) — off the screen center. A 300x1000 portrait
   // image centered there would start at y = -140, cutting off the top 140px.
@@ -88,8 +98,7 @@ it("clamps the centered position so a tall image stays fully on screen", async (
   win.innerSize.mockResolvedValue({ toLogical: () => ({ width: 300, height: 1000 }) });
   win.outerPosition.mockResolvedValue({ toLogical: () => ({ x: 400, y: -140 }) });
   const controller = createWindowController(() => "image", () => false);
-  controller.reportContentSize(300, 1000);
-  await new Promise(resolve => setTimeout(resolve, 0));
+  await controller.reportContentSize(300, 1000);
   const posCalls = win.setPosition.mock.calls;
   const [position] = posCalls[posCalls.length - 1]!;
   // Clamped into the work area: y in [0, 1080 - 1000] = [0, 80].

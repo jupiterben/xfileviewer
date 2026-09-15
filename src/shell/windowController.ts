@@ -28,11 +28,15 @@ export function createWindowController(getKind: () => string | undefined, isSett
   let pendingResize: { width: number; height: number; chrome: Size } | null = null;
   let resizeRunning = false;
 
+  let drainPromise: Promise<void> | null = null;
+
   async function resize(width: number, height: number, chrome: Size) {
-    const request = ++revision;
+    revision += 1;
     pendingResize = { width, height, chrome };
-    void drainResize().catch(reportError);
-    return request;
+    drainPromise ??= drainResize()
+      .catch(reportError)
+      .finally(() => { drainPromise = null; });
+    await drainPromise;
   }
 
   function sync() {
@@ -109,6 +113,12 @@ export function createWindowController(getKind: () => string | undefined, isSett
     };
     const nextPosition = clampPositionToWorkArea(centered, outerAfter, { ...workOrigin, ...work });
     await win.setPosition(new LogicalPosition(nextPosition.x, nextPosition.y));
+    // WebViewGTK keeps the previous layout viewport after a programmatic
+    // setSize until something forces a paint. The first image then sits in
+    // the old rectangle (wrong position) until the user resizes or remounts.
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
   }
 
   async function persist() {
@@ -156,7 +166,8 @@ export function createWindowController(getKind: () => string | undefined, isSett
     reportContentSize(width: number, height: number, chrome: Size = { width: 0, height: 0 }) {
       content = { width, height, chrome };
       const kind = getKind();
-      if (kind && shouldFitWindowToContent(kind, mode)) void resize(width, height, chrome).catch(reportError);
+      if (kind && shouldFitWindowToContent(kind, mode)) return resize(width, height, chrome);
+      return Promise.resolve();
     },
     async restore(kind: string) {
       if (!shouldRememberWindowSize(kind, mode)) return;
