@@ -20,18 +20,23 @@ pub(crate) fn query_file_associations(extensions: Vec<String>) -> AssociationQue
         let key = ext.to_lowercase();
         #[cfg(target_os = "linux")]
         let is_ours = mime_for_ext(&key).map(association_is_ours).unwrap_or(false);
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(target_os = "macos")]
+        let is_ours = crate::macos_associations::is_ours(&key);
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         let is_ours = false;
         granted.insert(key, is_ours);
     }
     AssociationQuery {
-        os_managed: cfg!(target_os = "linux"),
+        os_managed: cfg!(any(target_os = "linux", target_os = "macos")),
         granted,
     }
 }
 
 #[tauri::command]
 pub(crate) fn grant_file_associations(extensions: Vec<String>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    return crate::macos_associations::grant(&extensions);
+    #[cfg(not(target_os = "macos"))]
     let mimes: Vec<String> = extensions
         .iter()
         .map(|ext| {
@@ -52,15 +57,18 @@ pub(crate) fn grant_file_associations(extensions: Vec<String>) -> Result<(), Str
         write_mimeapps_list(|raw| grant_mime_defaults(&raw, desktop, &mimes))?;
         set_gio_defaults(desktop, &mimes);
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         let _ = mimes;
     }
+    #[cfg(not(target_os = "macos"))]
     Ok(())
 }
 
 #[tauri::command]
 pub(crate) fn revoke_file_associations(extensions: Vec<String>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    return crate::macos_associations::revoke(&extensions);
     #[cfg(target_os = "linux")]
     {
         let mimes: Vec<String> = extensions
@@ -72,13 +80,15 @@ pub(crate) fn revoke_file_associations(extensions: Vec<String>) -> Result<(), St
         }
         write_mimeapps_list(|raw| revoke_mime_defaults(&raw, OUR_DESKTOP_IDS, &mimes))?;
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         let _ = extensions;
     }
+    #[cfg(not(target_os = "macos"))]
     Ok(())
 }
 
+#[cfg(any(not(target_os = "macos"), test))]
 fn mime_for_ext(ext: &str) -> Option<&'static str> {
     Some(match ext.to_lowercase().as_str() {
         "jpg" | "jpeg" => "image/jpeg",

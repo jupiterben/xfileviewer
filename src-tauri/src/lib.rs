@@ -11,6 +11,8 @@ mod video_overlay;
 
 mod associations;
 mod launch;
+#[cfg(target_os = "macos")]
+mod macos_associations;
 mod media_commands;
 mod plugins;
 mod scan;
@@ -89,6 +91,16 @@ pub fn run() {
             plugins::list_plugin_dirs,
             plugins::read_plugin_file,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = event {
+                if let Some(path) = urls.into_iter().find_map(|url| url.to_file_path().ok()) {
+                    launch::open_file(app, path.to_string_lossy().into_owned());
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }

@@ -366,12 +366,19 @@ export async function bootApplication() {
   // Handshake from the overlay webview: it fires this once its popup
   // listeners are live, unblocking the popupMode switch in videoViewer.
   await listen("video-overlay-ready", () => markOverlayReady());
-  const launch = await invoke<string | null>("take_launch_path");
-  if (launch) {
-    await openPath(launch);
-  } else {
-    showEmpty("双击图片、视频或 Markdown，或把文件拖到这里");
-  }
+  showEmpty("双击图片、视频或 Markdown，或把文件拖到这里");
+  // Subscribe before draining the pending path so Finder opens cannot be lost
+  // between frontend initialization and the startup command.
+  let openingLaunch = Promise.resolve();
+  const drainLaunch = () => {
+    openingLaunch = openingLaunch.then(async () => {
+      const path = await invoke<string | null>("take_launch_path");
+      if (path) await openPath(path);
+    }).catch(error => console.error("[launch] could not open file", error));
+    return openingLaunch;
+  };
+  await listen("launch-file-ready", () => { void drainLaunch(); });
+  await drainLaunch();
   windowController.sync();
 }
 

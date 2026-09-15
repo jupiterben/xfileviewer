@@ -127,7 +127,10 @@
           "mkv"
         ],
         "mimeType": "video/x-matroska",
-        "role": "Viewer"
+        "role": "Viewer",
+        "contentTypes": [
+          "org.matroska.mkv"
+        ]
       },
       {
         "name": "QuickTime Video",
