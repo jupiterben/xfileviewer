@@ -4,6 +4,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { isTauri } from "../../shell/platform";
 import { formatClock } from "../../shell/formatClock";
 import { seekDeltaForKey, seekTime } from "./seek";
+import { bindVerticalVolumeRail } from "./verticalVolume";
 import {
   loadAudioSettings,
   saveAudioSettings,
@@ -87,8 +88,10 @@ export function createPlayerShell(ctx: ViewerContext): PlayerShell {
   const seek = wrap.querySelector<HTMLInputElement>(".video-seek")!;
   const muteBtn = wrap.querySelector<HTMLButtonElement>(".video-mute")!;
   const volume = wrap.querySelector<HTMLInputElement>(".video-volume")!;
+  const volumeRail = wrap.querySelector<HTMLElement>(".video-volume-rail")!;
   const volumeValue = wrap.querySelector<HTMLElement>(".video-volume-value")!;
   const volumeWrap = wrap.querySelector<HTMLElement>(".video-volume-wrap")!;
+  const unbindVolumeRail = bindVerticalVolumeRail(volumeRail, volume);
   let popupMode: "inline" | "overlay" = "inline";
   let barHover = false;
   let overlayHover = false;
@@ -151,6 +154,7 @@ export function createPlayerShell(ctx: ViewerContext): PlayerShell {
     muteBtn.setAttribute("aria-label", muteBtn.title);
     muteBtn.setAttribute("aria-pressed", String(silent));
     volume.value = String(percent);
+    volumeRail.style.setProperty("--volume-percent", String(percent));
     volume.title = `音量 ${percent}%${state.muted ? "（已静音）" : ""}`;
     volume.setAttribute(
       "aria-valuetext",
@@ -313,6 +317,7 @@ export function createPlayerShell(ctx: ViewerContext): PlayerShell {
       window.clearTimeout(hideTimer);
       if (popupMode === "overlay") ctx.onVolumePopup?.(false);
       unlisteners.forEach((unlisten) => unlisten());
+      unbindVolumeRail();
       window.removeEventListener("keydown", onKey);
       ctx.onToolbar?.(null);
       void unmount(view);

@@ -125,6 +125,16 @@ describe("player shell", () => {
     expect(calls[calls.length - 1]).toBe("volume:0.6:false");
   });
 
+  it("maps a click on the vertical rail by Y, not native range geometry", () => {
+    setup();
+    const rail = q<HTMLElement>(".video-volume-rail");
+    rail.getBoundingClientRect = () =>
+      ({ top: 100, bottom: 228, height: 128, left: 0, right: 32, width: 32, x: 0, y: 100, toJSON() {} }) as DOMRect;
+    rail.dispatchEvent(Object.assign(new Event("pointerdown", { bubbles: true }), { clientY: 164, button: 0 }));
+    expect(shell!.state.volume).toBeCloseTo(0.5);
+    expect(rail.style.getPropertyValue("--volume-percent")).toBe("50");
+  });
+
   it("persists audio settings", () => {
     setup();
     const volume = q<HTMLInputElement>(".video-volume");

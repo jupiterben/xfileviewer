@@ -16,7 +16,13 @@
     <div class="video-volume-wrap" role="group" aria-label="音量控制">
       <button type="button" class="video-mute" aria-label="静音"></button>
       <div class="video-volume-pop">
-        <input type="range" class="video-volume" min="0" max="100" step="1" aria-label="音量" />
+        <div class="video-volume-rail">
+          <div class="video-volume-track" aria-hidden="true">
+            <div class="video-volume-fill"></div>
+            <div class="video-volume-thumb"></div>
+          </div>
+          <input type="range" class="video-volume" min="0" max="100" step="1" aria-label="音量" />
+        </div>
         <span class="video-volume-value" aria-hidden="true"></span>
       </div>
     </div>

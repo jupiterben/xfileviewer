@@ -2,6 +2,7 @@ import { mount } from "svelte";
 import VideoOverlay from "../ui/VideoOverlay.svelte";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { bindVerticalVolumeRail } from "../plugins/video/verticalVolume";
 
 interface PopupCmd {
   show: boolean;
@@ -33,6 +34,7 @@ export async function bootVideoOverlay(): Promise<void> {
   const layer = document.querySelector<HTMLElement>(".video-overlay-layer")!;
   const pop = layer.querySelector<HTMLElement>(".video-overlay-pop")!;
   const volume = layer.querySelector<HTMLInputElement>(".video-overlay-volume")!;
+  const volumeRail = layer.querySelector<HTMLElement>(".video-volume-rail")!;
   const value = layer.querySelector<HTMLElement>(".video-volume-value")!;
 
   let muted = false;
@@ -48,6 +50,8 @@ export async function bootVideoOverlay(): Promise<void> {
 
   const renderValue = () => {
     value.textContent = muted || Number(volume.value) === 0 ? "静音" : `${volume.value}%`;
+    volumeRail.style.setProperty("--volume-percent", volume.value);
+    pop.classList.toggle("is-muted", muted || Number(volume.value) === 0);
     volume.setAttribute("aria-valuetext", `${volume.value}%${muted ? "（已静音）" : ""}`);
   };
   const applyState = (state: PopupState) => {
@@ -79,9 +83,16 @@ export async function bootVideoOverlay(): Promise<void> {
 
   });
 
-  volume.addEventListener("pointerdown", () => { dragging = true; });
+  bindVerticalVolumeRail(volumeRail, volume, {
+    onDragChange(next) {
+      dragging = next;
+      if (!next && !pop.matches(":hover") && !pop.contains(document.activeElement)) {
+        void emit("video-overlay-hover", { active: false }).catch(() => undefined);
+      }
+    },
+  });
   const release = () => {
-    dragging = false;
+    if (dragging) return;
     if (!pop.matches(":hover") && !pop.contains(document.activeElement)) {
       void emit("video-overlay-hover", { active: false }).catch(() => undefined);
     }

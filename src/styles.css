@@ -297,15 +297,55 @@ body {
   background: rgb(255 255 255 / 12%);
 }
 
-.video-volume {
-  writing-mode: vertical-lr;
-  direction: rtl;
+/* Custom rail: WebKitGTK paints native range horizontally and ignores
+ * writing-mode / slider-vertical. Pointer mapping lives in JS. */
+.video-volume-rail {
+  position: relative;
+  flex-shrink: 0;
   width: 32px;
   height: 128px;
-  margin: 0;
-  accent-color: #8ab4f8;
   cursor: pointer;
   touch-action: none;
+}
+
+.video-volume-track {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: #3c4048;
+}
+
+.video-volume-fill {
+  position: absolute;
+  inset: auto 0 0;
+  height: calc(var(--volume-percent, 100) * 1%);
+  border-radius: inherit;
+  background: #8ab4f8;
+}
+
+.video-volume-thumb {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--volume-percent, 100) * 1%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #e8eaed;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+  transform: translate(-50%, 50%);
+}
+
+.video-volume,
+.video-overlay-volume {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .video-volume-value {
@@ -316,11 +356,12 @@ body {
   color: #c4c7cc;
 }
 
-.video-volume-wrap.is-muted .video-volume {
-  accent-color: #9aa0a6;
+.video-volume-wrap.is-muted .video-volume-fill,
+.video-overlay-pop.is-muted .video-volume-fill {
+  background: #9aa0a6;
 }
 
-.video-volume:focus-visible,
+.video-volume-rail:focus-within,
 .video-mute:focus-visible {
   outline: 2px solid #8ab4f8;
   outline-offset: 2px;
@@ -390,16 +431,6 @@ html.overlay-mode .scan-status {
   right: 0;
   bottom: -8px;
   height: 8px;
-}
-
-.video-overlay-volume {
-  writing-mode: vertical-lr;
-  direction: rtl;
-  width: 32px;
-  height: 128px;
-  touch-action: none;
-  accent-color: #8ab4f8;
-  cursor: pointer;
 }
 
 /* Narrow windows (portrait videos): the bar cannot fit every control, and

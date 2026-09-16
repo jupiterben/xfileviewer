@@ -12,6 +12,8 @@ Esc：查看/空状态关闭窗口退出；设置页先关掉设置；关联确�
 
 视频画面在窗口内 contain，控制条高度计入适应尺寸；不出现垂直滚动条。
 
+音量条：Linux WebKitGTK 忽略 `writing-mode` 竖向原生 `range`（GTK Scale 默认横向）。自绘 `.video-volume-rail`，按指针 Y 映射（上=100%、下=0%）。macOS WKWebView 原先竖向是好的。
+
 首次打开图片：等窗口 `setSize`/`setPosition` 完成后再去掉 `image-pending`，避免 WebViewGTK 在程序化改尺寸后不重算 object-fit，图停在默认窗口的旧位置。
 
 图片左右翻页按钮：`top: 50%` 配 `translateY(-50%)` 垂直居中，贴窗口左右各 10px。不要用 `translateX(-50%)`（会把上一张再往左、下一张相对右缘错位）。
