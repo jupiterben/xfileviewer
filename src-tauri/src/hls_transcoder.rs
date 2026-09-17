@@ -9,7 +9,7 @@
 //!   `Job` owns the child process handle and the temp dir, so dropping the
 //!   entry (explicit `hls_close` or process exit) kills the child and removes
 //!   the temp dir together — no orphan processes, no leaked segment files.
-//! - ffmpeg is resolved via `which` crate at runtime. If the binary is
+//! - ffmpeg is resolved from PATH and standard macOS install locations. If the binary is
 //!   missing, `ffmpeg_available` reports false and the frontend falls back
 //!   to the existing `MEDIA_ERR_SRC_NOT_SUPPORTED` error path.
 use std::collections::HashMap;
@@ -47,7 +47,17 @@ impl HlsTranscoder {
     /// Probe ffmpeg on PATH. Returns the absolute path of the binary, or
     /// `None` if the user has not installed it.
     pub fn locate_ffmpeg() -> Option<PathBuf> {
-        which("ffmpeg")
+        which("ffmpeg").or_else(|| {
+            // Finder-launched apps do not inherit the shell's Homebrew PATH.
+            #[cfg(target_os = "macos")]
+            for path in ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"] {
+                let path = PathBuf::from(path);
+                if path.is_file() {
+                    return Some(path);
+                }
+            }
+            None
+        })
     }
 
     /// Start an HLS transcode for `path` under a fresh per-session directory
@@ -67,6 +77,11 @@ impl HlsTranscoder {
         let ffmpeg = Self::locate_ffmpeg().ok_or_else(|| "ffmpeg 不在 PATH 中".to_string())?;
         crate::media_server::open_media(path).map_err(|err| format!("无法打开视频：{err}"))?;
 
+        let mut guard = self.jobs.lock().map_err(|err| err.to_string())?;
+        if let Some(mut prev) = guard.remove(session) {
+            let _ = prev.child.kill();
+            let _ = prev.child.wait();
+        }
         // Per-session dir, e.g. <cache_root>/hls/<session>. The media server
         // refuses requests whose canonical path escapes this directory.
         let dir = cache_root.join("hls").join(session);
@@ -89,6 +104,13 @@ impl HlsTranscoder {
             .arg("-y")
             .arg("-i")
             .arg(path)
+            .args(["-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn"])
+            .args([
+                "-vf",
+                "scale=ceil(iw/2)*2:ceil(ih/2)*2",
+                "-pix_fmt",
+                "yuv420p",
+            ])
             .arg("-c:v")
             .arg("libx264")
             .arg("-preset")
@@ -116,22 +138,25 @@ impl HlsTranscoder {
             .arg("-hls_segment_filename")
             .arg(&seg_pattern)
             .arg(&m3u8);
+        let log_path = dir.join("ffmpeg.log");
+        let log = std::fs::File::create(&log_path).map_err(|err| err.to_string())?;
         cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::piped());
+            .stderr(Stdio::from(log));
 
-        let child = cmd
+        let mut child = cmd
             .spawn()
             .map_err(|err| format!("启动 ffmpeg 失败（{}）：{err}", ffmpeg.display()))?;
 
         let url = format!("{media_base_url}/hls/{}/index.m3u8", session);
 
-        let mut guard = self.jobs.lock().map_err(|err| err.to_string())?;
-        if let Some(mut prev) = guard.remove(session) {
-            // Best-effort cleanup of the previous job; ignore errors because
-            // the new job already owns the same on-disk directory.
-            let _ = prev.child.kill();
-            let _ = prev.child.wait();
+        // A native HLS player treats an initial 404 as an unsupported source.
+        // Do not hand it the URL until ffmpeg has published a playable segment.
+        if let Err(error) = wait_for_playlist(&mut child, &m3u8, &log_path) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err(error);
         }
         guard.insert(
             session.to_string(),
@@ -180,6 +205,38 @@ impl HlsTranscoder {
 impl Drop for HlsTranscoder {
     fn drop(&mut self) {
         self.shutdown();
+    }
+}
+
+fn wait_for_playlist(child: &mut Child, playlist: &Path, log: &Path) -> Result<(), String> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        let status = child.try_wait().map_err(|err| err.to_string())?;
+        if status.is_some_and(|status| !status.success()) {
+            let detail = std::fs::read_to_string(log).unwrap_or_default();
+            return Err(format!("视频转码失败：{}", detail.trim()));
+        }
+        if let Ok(text) = std::fs::read_to_string(playlist) {
+            if text.lines().any(|line| {
+                !line.is_empty()
+                    && !line.starts_with('#')
+                    && playlist
+                        .parent()
+                        .unwrap()
+                        .join(line)
+                        .metadata()
+                        .is_ok_and(|meta| meta.len() > 0)
+            }) {
+                return Ok(());
+            }
+        }
+        if status.is_some() {
+            return Err("视频转码结束，但未生成可播放的视频片段".into());
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err("等待视频转码超时，请重试".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
 }
 
@@ -259,19 +316,26 @@ pub fn ffmpeg_available() -> bool {
 /// URL. Requires ffmpeg on PATH; otherwise returns an error so the frontend
 /// can keep the existing `MEDIA_ERR_SRC_NOT_SUPPORTED` message.
 #[tauri::command]
-pub fn hls_open(
-    state: tauri::State<HlsTranscoder>,
-    media: tauri::State<crate::media_server::MediaServer>,
-    hls_root: tauri::State<crate::media_server::HlsCacheRoot>,
+pub async fn hls_open(
+    app: tauri::AppHandle,
     session: String,
     path: String,
 ) -> Result<HlsInfo, String> {
-    let cache = hls_root
-        .lock()
-        .map_err(|err| err.to_string())?
-        .clone()
-        .ok_or_else(|| "媒体服务尚未就绪".to_string())?;
-    state.start(&cache, media.port, &media.base_url(), &session, &path)
+    // Waiting for ffmpeg must not block the window's event loop.
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let state = app.state::<HlsTranscoder>();
+        let media = app.state::<crate::media_server::MediaServer>();
+        let root = app.state::<crate::media_server::HlsCacheRoot>();
+        let cache = root
+            .lock()
+            .map_err(|err| err.to_string())?
+            .clone()
+            .ok_or_else(|| "媒体服务尚未就绪".to_string())?;
+        state.start(&cache, media.port, &media.base_url(), &session, &path)
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 /// Tauri command: stop the HLS session and remove its temp dir.
@@ -284,6 +348,68 @@ pub fn hls_close(state: tauri::State<HlsTranscoder>, session: String) -> Result<
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn transcode_returns_only_after_segments_are_ready_and_reports_bad_input() {
+        let Some(ffmpeg) = HlsTranscoder::locate_ffmpeg() else {
+            eprintln!("Skipping real transcode check: ffmpeg unavailable");
+            return;
+        };
+        let root =
+            std::env::temp_dir().join(format!("xfileviewer-transcode-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let input = root.join("中文 odd.mkv");
+        let status = Command::new(ffmpeg)
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=321x181:rate=12:duration=1",
+                "-c:v",
+                "ffv1",
+            ])
+            .arg(&input)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let transcoder = HlsTranscoder::default();
+        transcoder
+            .start(
+                &root,
+                1234,
+                "http://127.0.0.1:1234/token",
+                "ready",
+                input.to_str().unwrap(),
+            )
+            .unwrap();
+        let playlist = std::fs::read_to_string(root.join("hls/ready/index.m3u8")).unwrap();
+        assert!(playlist.contains("#EXTINF:"));
+        for segment in playlist
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        {
+            assert!(
+                root.join("hls/ready")
+                    .join(segment)
+                    .metadata()
+                    .unwrap()
+                    .len()
+                    > 0
+            );
+        }
+        transcoder.stop("ready").unwrap();
+        assert!(!root.join("hls/ready").exists());
+        std::fs::write(&input, "not a video").unwrap();
+        let error = transcoder
+            .start(&root, 1234, "", "broken", input.to_str().unwrap())
+            .unwrap_err();
+        assert!(error.contains("视频转码失败"), "{error}");
+        assert!(!root.join("hls/broken").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn is_safe_segment_rejects_traversal() {

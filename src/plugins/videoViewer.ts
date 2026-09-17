@@ -69,9 +69,7 @@ function mountVideo(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
           reason,
           error: err,
         });
-        // Stay on the WebView path so the user at least sees the standard
-        // error message when ffmpeg itself is broken.
-        openHtml();
+        shell.fail(err instanceof Error ? err.message : String(err));
       }
     })();
   };
