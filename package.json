@@ -14,7 +14,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
-    "@infloopgame/lib-fbx": "^0.1.1",
+    "@infloopgame/lib-fbx": "^0.1.2",
     "@mdit/plugin-katex": "^1.1.0",
     "@mkkellogg/gaussian-splats-3d": "^0.4.7",
     "@tauri-apps/api": "^2",

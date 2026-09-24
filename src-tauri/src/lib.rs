@@ -14,6 +14,7 @@ mod launch;
 #[cfg(target_os = "macos")]
 mod macos_associations;
 mod media_commands;
+mod open_with;
 mod plugins;
 mod scan;
 mod settings;
@@ -61,6 +62,8 @@ pub fn run() {
             launch::take_launch_path,
             file_actions::choose_file_application,
             file_actions::menu_popup_chrome_offset,
+            open_with::list_open_with_apps,
+            open_with::open_file_with,
             scan::parent_dir,
             scan::list_dir_files,
             settings::load_association_settings,

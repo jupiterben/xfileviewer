@@ -1,5 +1,6 @@
 import { mount, unmount } from "svelte";
 import EmptyState from "../ui/EmptyState.svelte";
+import Sidebar from "../ui/Sidebar.svelte";
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -42,8 +43,11 @@ let scanError = "";
 let scannedEntries = 0;
 let receivedFiles = 0;
 const viewerSession = createViewerSession();
+let settingsOpen = false;
 const associations = createAssociationController(registry, open => {
+  settingsOpen = open;
   workspace.hidden = open;
+  syncSidebar();
   if (open) setWindowTitle("设置");
   else updateChrome();
   windowController.sync();
@@ -51,6 +55,20 @@ const associations = createAssociationController(registry, open => {
 const windowController = createWindowController(() => sequence?.kindId, associations.isOpen);
 let appVersionLabel = "";
 let emptyView: ReturnType<typeof mount> | undefined;
+
+const sidebarEl = document.querySelector<HTMLElement>("#sidebar")!;
+const sidebar = mount(Sidebar, { target: sidebarEl, props: {
+  onSelect: (index: number) => goTo(index),
+} });
+
+function syncSidebar() {
+  sidebarEl.hidden = settingsOpen || !sequence;
+  sidebar.update(sequence?.items ?? [], sequence?.index ?? -1);
+}
+
+function sidebarChromeWidth(): number {
+  return sidebarEl.hidden ? 0 : sidebarEl.offsetWidth;
+}
 
 function setWindowTitle(text: string) {
   const title = text.trim() || " ";
@@ -72,6 +90,7 @@ function showEmpty(message: string) {
   destroyViewer();
   sequence = null;
   host.replaceChildren();
+  syncSidebar();
   emptyView = mount(EmptyState, { target: host, props: {
     message, version: appVersionLabel, onSettings: () => { void associations.open(); },
   } });
@@ -116,6 +135,7 @@ function renderError(message: string) {
 
 function updateChrome() {
   const path = currentPath();
+  syncSidebar();
   if (!sequence || !path) {
     scanStatusEl.hidden = true;
     prevBtn.disabled = true;
@@ -167,7 +187,10 @@ function mountCurrent() {
       onVolumePopup: (show, pos) => {
         void emit("video-overlay-cmd", { show, ...pos }).catch(() => undefined);
       },
-      onContentSize: windowController.reportContentSize,
+      onContentSize: (width, height, chrome) => windowController.reportContentSize(width, height, {
+        width: (chrome?.width ?? 0) + sidebarChromeWidth(),
+        height: chrome?.height ?? 0,
+      }),
     });
   } catch (err) {
     renderError(err instanceof Error ? err.message : String(err));
@@ -263,6 +286,15 @@ function go(direction: 1 | -1) {
     index: sequence.index,
     count: sequence.items.length,
   });
+  mountCurrent();
+}
+
+function goTo(index: number) {
+  if (associations.isInteractionBlocked()) return;
+  if (!sequence || index < 0 || index >= sequence.items.length) return;
+  if (index === sequence.index) return;
+  destroyViewer();
+  sequence = { ...sequence, index };
   mountCurrent();
 }
 

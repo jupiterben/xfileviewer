@@ -17,6 +17,170 @@ body {
   flex-direction: column;
 }
 
+.main-row {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.sidebar {
+  flex: 0 0 232px;
+  width: 232px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #14161b;
+  border-right: 1px solid #2a2d36;
+}
+
+.sidebar[hidden] {
+  display: none;
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The file list owns the leftover height; the app list stays content-sized
+ * (capped below) so it never squeezes the files out. */
+.sidebar-section:first-child.is-open {
+  flex: 1;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 0;
+  border-top: 1px solid #2a2d36;
+  background: transparent;
+  color: #c4c7cc;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-section:first-child .sidebar-header {
+  border-top: 0;
+}
+
+.sidebar-header:hover {
+  background: rgb(255 255 255 / 5%);
+}
+
+.sidebar-chevron {
+  width: 1em;
+  font-size: 10px;
+  color: #9aa0a6;
+}
+
+.sidebar-count {
+  margin-left: auto;
+  font-weight: 400;
+  color: #6b7078;
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-files {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 6px 8px;
+}
+
+.sidebar-apps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 40vh;
+  overflow: auto;
+  padding: 2px 6px 10px;
+}
+
+.sidebar-file,
+.sidebar-app {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #e8eaed;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-app {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-app-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-app-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.sidebar-app-icon-fallback {
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: #2f333d;
+  color: #9aa0a6;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.sidebar-file:hover,
+.sidebar-app:hover:not(:disabled) {
+  background: rgb(255 255 255 / 8%);
+}
+
+.sidebar-file.active {
+  background: #2b3b57;
+  color: #cfe1ff;
+}
+
+.sidebar-app:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sidebar-app-other {
+  color: #8ab4f8;
+}
+
+.sidebar-empty {
+  margin: 6px 8px;
+  color: #6b7078;
+  font-size: 12px;
+}
+
+.sidebar-error {
+  color: #f28b82;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .workspace {
   position: relative;
   flex: 1;
@@ -377,6 +541,7 @@ html.overlay-mode body {
   background: transparent;
 }
 
+html.overlay-mode .main-row,
 html.overlay-mode .workspace,
 html.overlay-mode #settings,
 html.overlay-mode #assoc-overlay,

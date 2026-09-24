@@ -26,6 +26,9 @@ uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(windows)'.dependencies]
 libloading = "0.8"
+# Icon extraction for the "open with" list: HICON pixels -> PNG data URL.
+png = "0.18"
+base64 = "0.22"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader", "Win32_System_WindowsProgramming", "Win32_Graphics_Gdi"] }
 # COM-backed IDropTarget forwarding: version/features must stay compatible with
 # the copy wry pulls into the tree (see video_drop.rs). `implement` is always
@@ -39,6 +42,7 @@ windows = { version = "0.61", features = [
   "Win32_System_Ole",
   "Win32_System_SystemServices",
   "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
 ] }
 # Direct dep so the `#[implement]` macro's emitted `windows_core::` paths resolve.
 windows-core = "0.61"

@@ -1,5 +1,7 @@
 <script lang="ts"></script>
-<div class="workspace">
+<div class="main-row">
+  <aside id="sidebar" class="sidebar" data-no-window-drag hidden></aside>
+  <div class="workspace">
       <div id="viewer-host" class="viewer-host"></div>
       <button type="button" id="prev" class="nav nav-prev" disabled aria-label="上一张">
         ‹
@@ -11,6 +13,7 @@
         适应尺寸
       </button>
     </div>
+</div>
     <div id="settings" class="settings" hidden>
       <header class="settings-bar">
         <button type="button" id="settings-back">返回</button>

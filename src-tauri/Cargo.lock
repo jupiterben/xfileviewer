@@ -4966,9 +4966,11 @@ dependencies = [
 name = "xfileviewer"
 version = "0.1.10"
 dependencies = [
+ "base64 0.22.1",
  "gtk",
  "libloading 0.8.9",
  "percent-encoding",
+ "png 0.18.1",
  "serde",
  "serde_json",
  "tauri",

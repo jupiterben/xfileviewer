@@ -4,6 +4,8 @@ description = "Shell commands for opening files, listing folders, plugins, and a
 commands.allow = [
   "take_launch_path",
   "choose_file_application",
+  "list_open_with_apps",
+  "open_file_with",
   "menu_popup_chrome_offset",
   "parent_dir",
   "list_dir_files",
