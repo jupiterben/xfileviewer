@@ -1,6 +1,45 @@
+/* ---------------------------------------------------------------------------
+ * Design tokens
+ * One place for palette, radii, shadows and motion so every surface stays
+ * consistent. Media viewers live on dark; tokens are tuned for it.
+ * ------------------------------------------------------------------------- */
 :root {
-  color: #e8eaed;
-  background: #111216;
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg: #0f1115;
+  --bg-raised: #151821;
+  --bg-overlay: #1b1e28;
+  --bg-inset: #0b0c10;
+
+  /* Lines */
+  --border: #2a2e3a;
+  --border-soft: rgb(255 255 255 / 6%);
+
+  /* Text */
+  --text: #e8eaf0;
+  --text-secondary: #a9aeba;
+  --text-muted: #6d7380;
+
+  /* Accent & status */
+  --accent: #8ab4f8;
+  --accent-soft: rgb(138 180 248 / 16%);
+  --danger: #f28b82;
+
+  /* Shape & depth */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-1: 0 1px 3px rgb(0 0 0 / 30%), 0 2px 10px rgb(0 0 0 / 22%);
+  --shadow-2: 0 6px 24px rgb(0 0 0 / 45%), 0 2px 8px rgb(0 0 0 / 35%);
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+
+  color: var(--text);
+  background: var(--bg);
   font-family: "Segoe UI", "Noto Sans SC", sans-serif;
 }
 
@@ -9,7 +48,7 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: #111216;
+  background: var(--bg);
 }
 
 body {
@@ -17,6 +56,46 @@ body {
   flex-direction: column;
 }
 
+/* ---------------------------------------------------------------------------
+ * Focus & scrollbars (global a11y polish)
+ * ------------------------------------------------------------------------- */
+:where(button, input, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 18%) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 18%);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(255 255 255 / 30%);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ---------------------------------------------------------------------------
+ * Layout shell
+ * ------------------------------------------------------------------------- */
 .main-row {
   flex: 1;
   min-height: 0;
@@ -30,8 +109,9 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #14161b;
-  border-right: 1px solid #2a2d36;
+  background: var(--bg-raised);
+  border-right: 1px solid var(--border);
+  user-select: none;
 }
 
 .sidebar[hidden] {
@@ -54,16 +134,18 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 10px;
+  padding: 9px 12px;
   border: 0;
-  border-top: 1px solid #2a2d36;
+  border-top: 1px solid var(--border);
   background: transparent;
-  color: #c4c7cc;
+  color: var(--text-secondary);
   font: inherit;
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0.02em;
   text-align: left;
   cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 
 .sidebar-section:first-child .sidebar-header {
@@ -72,18 +154,24 @@ body {
 
 .sidebar-header:hover {
   background: rgb(255 255 255 / 5%);
+  color: var(--text);
 }
 
 .sidebar-chevron {
   width: 1em;
   font-size: 10px;
-  color: #9aa0a6;
+  color: var(--text-muted);
+  transition: transform var(--dur-fast) var(--ease);
 }
 
 .sidebar-count {
   margin-left: auto;
-  font-weight: 400;
-  color: #6b7078;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 7%);
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -109,9 +197,9 @@ body {
   width: 100%;
   padding: 5px 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: #e8eaed;
+  color: var(--text);
   font: inherit;
   font-size: 12.5px;
   text-align: left;
@@ -119,6 +207,7 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 
 .sidebar-app {
@@ -144,7 +233,7 @@ body {
   place-items: center;
   border-radius: 4px;
   background: #2f333d;
-  color: #9aa0a6;
+  color: var(--text-secondary);
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
@@ -156,8 +245,9 @@ body {
 }
 
 .sidebar-file.active {
-  background: #2b3b57;
-  color: #cfe1ff;
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .sidebar-app:disabled {
@@ -166,17 +256,17 @@ body {
 }
 
 .sidebar-app-other {
-  color: #8ab4f8;
+  color: var(--accent);
 }
 
 .sidebar-empty {
   margin: 6px 8px;
-  color: #6b7078;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
 .sidebar-error {
-  color: #f28b82;
+  color: var(--danger);
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -204,9 +294,12 @@ body {
   grid-template-rows: minmax(0, 1fr);
   grid-template-columns: minmax(0, 1fr);
   place-items: center;
-  background: #0c0d10;
+  background: var(--bg-inset);
 }
 
+/* ---------------------------------------------------------------------------
+ * Sequence navigation arrows
+ * ------------------------------------------------------------------------- */
 .nav {
   position: absolute;
   top: 50%;
@@ -214,17 +307,22 @@ body {
   display: grid;
   place-items: center;
   transform: translateY(-50%);
-  width: 44px;
-  height: 88px;
+  width: 48px;
+  height: 96px;
   padding: 0;
   border: 0;
-  border-radius: 10px;
-  background: rgb(0 0 0 / 22%);
-  color: rgb(255 255 255 / 82%);
-  font-size: 36px;
+  border-radius: var(--radius-lg);
+  background: rgb(0 0 0 / 30%);
+  color: rgb(255 255 255 / 85%);
+  font-size: 40px;
+  font-weight: 300;
   line-height: 1;
   cursor: pointer;
-  opacity: 0.55;
+  opacity: 0.5;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 45%);
+  backdrop-filter: blur(6px);
+  transition: opacity var(--dur) var(--ease), background var(--dur) var(--ease),
+    scale var(--dur) var(--ease);
 }
 
 /* While a video is mounted, the floating arrows overlap the video surface.
@@ -238,7 +336,12 @@ body {
 
 .nav:hover:not(:disabled) {
   opacity: 1;
-  background: rgb(0 0 0 / 42%);
+  background: rgb(0 0 0 / 48%);
+  scale: 1.05;
+}
+
+.nav:active:not(:disabled) {
+  scale: 0.97;
 }
 
 .nav:disabled {
@@ -256,16 +359,18 @@ body {
 
 .scan-status {
   position: absolute;
-  top: 8px;
+  top: 10px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 3;
   max-width: 85%;
-  padding: 4px 8px;
-  border-radius: 4px;
-  background: rgb(0 0 0 / 65%);
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgb(10 11 14 / 72%);
   color: #eee;
   font-size: 12px;
+  box-shadow: var(--shadow-1);
+  backdrop-filter: blur(8px);
   overflow-wrap: anywhere;
   pointer-events: none;
 }
@@ -274,11 +379,14 @@ body {
   background: #2f333d;
   color: inherit;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 6px 12px;
   cursor: pointer;
 }
 
+/* ---------------------------------------------------------------------------
+ * Stage & media
+ * ------------------------------------------------------------------------- */
 .stage {
   width: 100%;
   height: 100%;
@@ -335,8 +443,11 @@ body {
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  background: rgb(12 13 16 / 92%);
+  background: rgb(13 14 18 / 88%);
+  border-top: 1px solid var(--border-soft);
+  backdrop-filter: blur(12px);
   z-index: 3;
+  user-select: none;
 }
 
 .video-play,
@@ -347,10 +458,31 @@ body {
   height: 32px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
-  background: rgb(255 255 255 / 12%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 10%);
   color: #fff;
   cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), scale var(--dur-fast) var(--ease);
+}
+
+.video-play:hover,
+.video-nav:hover:not(:disabled) {
+  background: rgb(255 255 255 / 18%);
+}
+
+.video-play:active,
+.video-nav:active:not(:disabled) {
+  scale: 0.94;
+}
+
+/* The primary control gets the accent treatment. */
+.video-play {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.video-play:hover {
+  background: rgb(138 180 248 / 28%);
 }
 
 .video-nav {
@@ -372,15 +504,54 @@ body {
 .video-time {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  color: #c4c7cc;
+  color: var(--text-secondary);
   min-width: 3.2em;
 }
 
+/* Custom seek rail: keeps a 16px hit area while drawing a slim 4px track
+ * with a progress fill driven by --seek-percent (set from playerShell). */
 .video-seek {
   flex: 1;
   min-width: 0;
-  accent-color: #8ab4f8;
+  height: 16px;
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
   cursor: pointer;
+}
+
+.video-seek::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--seek-percent, 0%),
+    rgb(255 255 255 / 18%) var(--seek-percent, 0%)
+  );
+}
+
+.video-seek::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -4px;
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgb(138 180 248 / 25%);
+  transition: scale var(--dur-fast) var(--ease);
+}
+
+.video-seek:hover::-webkit-slider-thumb,
+.video-seek:focus-visible::-webkit-slider-thumb {
+  scale: 1.2;
+}
+
+/* Standard-property fallback for engines without the -webkit pseudo rules. */
+.video-seek {
+  accent-color: var(--accent);
 }
 
 .video-status {
@@ -390,7 +561,7 @@ body {
   place-items: center;
   padding: 24px;
   background: #000;
-  color: #c4c7cc;
+  color: var(--text-secondary);
   text-align: center;
 }
 
@@ -420,10 +591,11 @@ body {
   width: 52px;
   height: 168px;
   padding: 8px 0;
-  border: 1px solid #2a2d36;
-  border-radius: 8px;
-  background: #0c0d10;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-overlay);
+  box-shadow: var(--shadow-2);
+  backdrop-filter: blur(12px);
   transform: translateX(-50%);
   visibility: hidden;
   opacity: 0;
@@ -488,7 +660,7 @@ body {
   inset: auto 0 0;
   height: calc(var(--volume-percent, 100) * 1%);
   border-radius: inherit;
-  background: #8ab4f8;
+  background: var(--accent);
 }
 
 .video-volume-thumb {
@@ -517,17 +689,17 @@ body {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-align: center;
-  color: #c4c7cc;
+  color: var(--text-secondary);
 }
 
 .video-volume-wrap.is-muted .video-volume-fill,
 .video-overlay-pop.is-muted .video-volume-fill {
-  background: #9aa0a6;
+  background: var(--text-muted);
 }
 
 .video-volume-rail:focus-within,
 .video-mute:focus-visible {
-  outline: 2px solid #8ab4f8;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -569,9 +741,11 @@ html.overlay-mode .scan-status {
   gap: 8px;
   width: 52px;
   height: 184px;
-  border: 1px solid #2a2d36;
-  border-radius: 10px;
-  background: rgb(12 13 16 / 96%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: rgb(27 30 40 / 96%);
+  box-shadow: var(--shadow-2);
+  backdrop-filter: blur(12px);
   opacity: 0;
   pointer-events: none;
   transform: translateX(-50%) translateY(4px);
@@ -628,21 +802,25 @@ html.overlay-mode .scan-status {
   height: 100%;
   object-fit: contain;
   object-position: center;
+  transition: opacity 200ms var(--ease);
 }
 
+/* Pending images stay invisible; dropping the class fades the picture in
+ * once the window has been sized to it (see ImageViewer reveal). */
 .image-pending {
+  opacity: 0;
   visibility: hidden;
 }
 
 .empty,
 .error {
-  color: #9aa0a6;
+  color: var(--text-secondary);
   padding: 24px;
   text-align: center;
 }
 
 .error {
-  color: #f28b82;
+  color: var(--danger);
 }
 
 .overlay {
@@ -651,6 +829,7 @@ html.overlay-mode .scan-status {
   background: rgb(0 0 0 / 55%);
   display: grid;
   place-items: center;
+  backdrop-filter: blur(3px);
 }
 
 .overlay[hidden] {
@@ -659,17 +838,30 @@ html.overlay-mode .scan-status {
 
 .dialog {
   width: min(420px, calc(100% - 32px));
-  background: #1b1d24;
-  border: 1px solid #2a2d36;
-  border-radius: 10px;
-  padding: 16px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  box-shadow: var(--shadow-2);
+  animation: dialog-in 160ms var(--ease);
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .empty-wrap {
@@ -679,21 +871,39 @@ html.overlay-mode .scan-status {
   gap: 16px;
 }
 
+.empty-icon {
+  color: #3a3f4c;
+}
+
+.empty-icon svg {
+  display: block;
+  width: 56px;
+  height: 56px;
+}
+
 .empty-settings {
   background: #2f333d;
   color: inherit;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 6px 16px;
   cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
 }
 
+.empty-settings:hover {
+  background: #3a3f4c;
+}
+
+/* ---------------------------------------------------------------------------
+ * Settings
+ * ------------------------------------------------------------------------- */
 .settings {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: #111216;
+  background: var(--bg);
 }
 
 .settings[hidden] {
@@ -705,7 +915,8 @@ html.overlay-mode .scan-status {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  border-bottom: 1px solid #2a2d36;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
 }
 
 .settings-bar h1 {
@@ -718,9 +929,14 @@ html.overlay-mode .scan-status {
   background: #2f333d;
   color: inherit;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 6px 12px;
   cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.settings-bar button:hover {
+  background: #3a3f4c;
 }
 
 .settings-body {
@@ -734,7 +950,7 @@ html.overlay-mode .scan-status {
   margin: 16px 0 8px;
   font-size: 13px;
   font-weight: 600;
-  color: #c4c7cc;
+  color: var(--text-secondary);
 }
 
 .settings-section:first-child h2 {
@@ -745,8 +961,19 @@ html.overlay-mode .scan-status {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 0;
+  padding: 8px 10px;
+  margin: 0 -10px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.settings-choice:hover {
+  background: rgb(255 255 255 / 4%);
+}
+
+.settings-choice input {
+  accent-color: var(--accent);
 }
 
 .settings-list {
@@ -759,13 +986,19 @@ html.overlay-mode .scan-status {
   right: 12px;
   z-index: 4;
   padding: 4px 10px;
-  border: 1px solid #2a2d36;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgb(12 13 16 / 82%);
-  color: #e8eaed;
+  background: rgb(27 30 40 / 82%);
+  color: var(--text);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.media-window-mode:hover {
+  background: rgb(38 42 54 / 90%);
 }
 
 .media-window-mode[hidden] {
@@ -779,6 +1012,12 @@ html.overlay-mode .scan-status {
   z-index: auto;
   flex-shrink: 0;
   margin-left: 2px;
+  border-color: var(--border-soft);
+  background: rgb(255 255 255 / 8%);
+}
+
+.video-bar .media-window-mode:hover {
+  background: rgb(255 255 255 / 16%);
 }
 
 .assoc-exts {
@@ -793,14 +1032,19 @@ html.overlay-mode .scan-status {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border: 1px solid #2a2d36;
-  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.assoc-row:hover {
+  background: rgb(255 255 255 / 4%);
 }
 
 .assoc-row.is-error {
-  border-color: #f28b82;
+  border-color: var(--danger);
 }
 
 .assoc-ext {
@@ -814,7 +1058,7 @@ html.overlay-mode .scan-status {
   margin: 16px 0 0;
   font-size: 13px;
   font-weight: 600;
-  color: #c4c7cc;
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
@@ -827,13 +1071,13 @@ html.overlay-mode .scan-status {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-top: 1px solid #2a2d36;
+  border-top: 1px solid var(--border);
 }
 
 .app-version {
   margin: 0;
   font-size: 12px;
-  color: #6b7078;
+  color: var(--text-muted);
 }
 
 .settings-footer button:disabled {
@@ -843,3 +1087,15 @@ html.overlay-mode .scan-status {
 
 /* Svelte root fills the desktop webview without adding a layout layer. */
 #app { display: contents; }
+
+/* ---------------------------------------------------------------------------
+ * Reduced motion: collapse all decorative transitions & animations.
+ * ------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .nav,
+  .dialog,
+  .image {
+    transition: none;
+    animation: none;
+  }
+}

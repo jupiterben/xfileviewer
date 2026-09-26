@@ -326,7 +326,12 @@ pub async fn list_open_with_apps(path: String) -> Result<Vec<OpenWithApp>, Strin
         return Err("文件不存在或不是普通文件".into());
     }
     #[cfg(windows)]
-    return windows_impl::list(path);
+    // The Windows impl joins a dedicated STA thread and extracts shell icons,
+    // which can block for seconds (worse on network drives). Keep it off the
+    // async runtime's worker threads and away from the main thread entirely.
+    return tauri::async_runtime::spawn_blocking(move || windows_impl::list(path))
+        .await
+        .map_err(|err| err.to_string())?;
     #[cfg(target_os = "linux")]
     return linux_impl::list(path);
     #[cfg(not(any(windows, target_os = "linux")))]
@@ -344,7 +349,9 @@ pub async fn open_file_with(path: String, app_id: String) -> Result<(), String> 
         return Err("文件不存在或不是普通文件".into());
     }
     #[cfg(windows)]
-    return windows_impl::open(path, app_id);
+    return tauri::async_runtime::spawn_blocking(move || windows_impl::open(path, app_id))
+        .await
+        .map_err(|err| err.to_string())?;
     #[cfg(target_os = "linux")]
     return linux_impl::open(path, app_id);
     #[cfg(not(any(windows, target_os = "linux")))]

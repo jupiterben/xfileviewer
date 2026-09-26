@@ -42,4 +42,4 @@ npm run tauri dev -- -- /path/to/file.jpg
 
 ### 3D 模型
 
-支持 FBX、OBJ（含相对路径 MTL 和纹理）、GLB、glTF（含外部缓冲区和纹理）、PLY 网格/点云，以及 PLY、SPLAT、KSPLAT 高斯泼溅。拖动旋转，右键拖动平移，滚轮缩放，左右键切换同目录模型；工具栏支持重置视角、线框和自动旋转。参考 xmodelviewer，使用 Three.js 按需加载。FBX Binary/ASCII 由 `@infloopgame/lib-fbx` 解析，再转换为 Three.js 场景（保留蒙皮、形变、动画和材质）。提供参考网格、可折叠模型信息（文件大小、尺寸、网格、材质、顶点、三角形、高斯点、动画数量），支持“打开”按钮和 Ctrl/Cmd+O。动画与参考项目一致，显示数量但不自动播放。暂不包含 Draco/KTX2 压缩解码器。
+支持 FBX、OBJ（含相对路径 MTL 和纹理）、GLB、glTF（含外部缓冲区和纹理）、PLY 网格/点云，以及 PLY、SPLAT、KSPLAT 高斯泼溅。GLB/glTF 支持 Draco（`KHR_draco_mesh_compression`）与 meshopt（`EXT_meshopt_compression`）压缩几何体，解码器位于 `public/draco/`；KTX2 压缩纹理（`KHR_texture_basisu`）暂不支持，会给出明确提示。拖动旋转，右键拖动平移，滚轮缩放，左右键切换同目录模型；工具栏支持重置视角、线框和自动旋转。参考 xmodelviewer，使用 Three.js 按需加载。FBX Binary/ASCII 由 `@infloopgame/lib-fbx` 解析，再转换为 Three.js 场景（保留蒙皮、形变、动画和材质）。提供参考网格、可折叠模型信息（文件大小、尺寸、网格、材质、顶点、三角形、高斯点、动画数量），支持“打开”按钮和 Ctrl/Cmd+O。动画与参考项目一致，显示数量但不自动播放。

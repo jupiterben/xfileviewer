@@ -129,7 +129,7 @@ fn show_no_activate(window: &tauri::WebviewWindow) {
 /// silently buried the whole popup behind the opaque main window. HWND_TOP is
 /// the same raise the mpv window uses; when another app activates it moves
 /// above the overlay, and the focus hook hides the overlay anyway.
-fn raise_overlay(app: &tauri::AppHandle, overlay: &tauri::WebviewWindow) {
+fn raise_overlay(_app: &tauri::AppHandle, overlay: &tauri::WebviewWindow) {
     if let Ok(overlay_hwnd) = overlay.hwnd() {
         unsafe {
             SetWindowPos(

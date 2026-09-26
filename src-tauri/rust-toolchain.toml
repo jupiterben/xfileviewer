@@ -1,0 +1,7 @@
+[toolchain]
+# rustc 1.98.1 ICEs on this project's dependency graph on Windows
+# (rustc_serialize STR_SENTINEL assertion while emitting metadata for
+# tauri/tauri-runtime). 1.97.0 compiles everything cleanly. Revisit after
+# the next stable release.
+channel = "1.97.0"
+profile = "minimal"

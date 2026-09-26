@@ -49,6 +49,17 @@ describe("3D models", () => {
     expect(model.children[0].name).toBe("test");
     disposeModel(model);
   });
+  it("rejects GLB models that require KTX2 textures with a friendly message", async () => {
+    const json = JSON.stringify({ asset: { version: "2.0" }, extensionsRequired: ["KHR_texture_basisu"], scene: 0, scenes: [{ nodes: [] }] });
+    const bytes = new TextEncoder().encode(json.padEnd(Math.ceil(json.length / 4) * 4, " "));
+    const buffer = new ArrayBuffer(20 + bytes.length);
+    const view = new DataView(buffer);
+    [0x46546c67, 2, buffer.byteLength, bytes.length, 0x4e4f534a].forEach((value, i) => view.setUint32(i * 4, value, true));
+    new Uint8Array(buffer, 20).set(bytes);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(buffer)));
+    await expect(loadModel("https://example.com/a.glb", "a.glb", new AbortController().signal))
+      .rejects.toThrow("KTX2");
+  });
   it("rejects unreadable models and aborted loads", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 404 })));
     await expect(loadModel("https://example.com/a.fbx", "a.fbx", new AbortController().signal)).rejects.toThrow("404");

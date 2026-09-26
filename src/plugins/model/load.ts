@@ -1,9 +1,14 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
 import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { extensionOf } from "../../core/path";
+
+/** Draco WASM decoder served from public/draco (see vite publicDir). */
+const DRACO_DECODER_PATH = "/draco/";
 
 export function resourceUrl(url: string, base: string): string {
   if (/^(data:|blob:|https?:|asset:)/i.test(url)) return url;
@@ -22,6 +27,41 @@ export function modelResourceBase(src: string): string {
     url.pathname = decodeURIComponent(url.pathname).replace(/\\/g, "/").split("/").map(encodeURIComponent).join("/");
   }
   return new URL(".", url).href;
+}
+
+/** Required extensions that GLTFLoader cannot satisfy in this build. */
+const UNSUPPORTED_REQUIRED: Record<string, string> = {
+  // KTX2Loader needs a renderer for detectSupport, which parseModel does not own.
+  KHR_texture_basisu: "该模型使用 KTX2 压缩纹理（KHR_texture_basisu），暂不支持",
+};
+
+/** Read extensionsRequired without full GLTFLoader involvement, for friendly errors. */
+export function gltfRequiredExtensions(buffer: ArrayBuffer): string[] {
+  try {
+    const view = new DataView(buffer);
+    let json: string;
+    if (buffer.byteLength >= 12 && view.getUint32(0, true) === 0x46546c67) {
+      // GLB: magic, version, length, chunk length, chunk type, JSON payload.
+      json = new TextDecoder().decode(new Uint8Array(buffer, 20, view.getUint32(12, true)));
+    } else {
+      json = new TextDecoder().decode(buffer);
+    }
+    const doc = JSON.parse(json) as { extensionsRequired?: string[] };
+    return doc.extensionsRequired ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function configureGltfLoader(manager: THREE.LoadingManager): { loader: GLTFLoader; draco: DRACOLoader } {
+  // Decoders for compressed geometry: Draco (KHR_draco_mesh_compression) and
+  // meshopt (EXT_meshopt_compression). Workers spawn lazily on first decode.
+  const draco = new DRACOLoader();
+  draco.setDecoderPath(DRACO_DECODER_PATH);
+  const loader = new GLTFLoader(manager);
+  loader.setDRACOLoader(draco);
+  loader.setMeshoptDecoder(MeshoptDecoder);
+  return { loader, draco };
 }
 
 export async function loadModel(src: string, path: string, signal: AbortSignal): Promise<THREE.Object3D> {
@@ -43,9 +83,20 @@ export async function parseModel(buffer: ArrayBuffer, src: string, path: string,
     }
     case "glb":
     case "gltf": {
-      const gltf = await new GLTFLoader(manager).parseAsync(buffer, base);
-      gltf.scene.animations = gltf.animations;
-      return gltf.scene;
+      for (const ext of gltfRequiredExtensions(buffer)) {
+        const message = UNSUPPORTED_REQUIRED[ext];
+        if (message) throw new Error(message);
+      }
+      const { loader, draco } = configureGltfLoader(manager);
+      try {
+        const gltf = await loader.parseAsync(buffer, base);
+        gltf.scene.animations = gltf.animations;
+        return gltf.scene;
+      } finally {
+        // All decoding (including Draco workers) is settled once parseAsync
+        // resolves or rejects, so the worker pool can be torn down.
+        draco.dispose();
+      }
     }
     case "ply": {
       const geometry = new PLYLoader().parse(buffer);

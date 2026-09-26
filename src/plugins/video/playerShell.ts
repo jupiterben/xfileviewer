@@ -137,6 +137,15 @@ export function createPlayerShell(ctx: ViewerContext): PlayerShell {
 
   ctx.onToolbar?.(bar);
 
+  /** Drive the seek slider's progress fill from the current position. */
+  function updateSeekFill() {
+    const percent =
+      state.duration > 0
+        ? Math.min(100, Math.max(0, (state.time / state.duration) * 100))
+        : 0;
+    seek.style.setProperty("--seek-percent", `${percent}%`);
+  }
+
   function render() {
     playBtn.textContent = state.paused ? "▶" : "❚❚";
     currentEl.textContent = formatClock(state.time);
@@ -145,6 +154,7 @@ export function createPlayerShell(ctx: ViewerContext): PlayerShell {
       seek.max = String(state.duration || 0);
       seek.value = String(state.time || 0);
     }
+    updateSeekFill();
     const silent = state.muted || state.volume === 0;
     const percent = Math.round(state.volume * 100);
     muteBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4Z"/>${silent ? '<path d="m16 9 5 6m0-6-5 6"/>' : '<path d="M15 8a6 6 0 0 1 0 8"/>' + (percent > 50 ? '<path d="M18 5a10 10 0 0 1 0 14"/>' : '')}</svg>`;
@@ -231,6 +241,7 @@ export function createPlayerShell(ctx: ViewerContext): PlayerShell {
     // Preview locally; committing on every tick would flood the native backend.
     state.time = Number(seek.value);
     currentEl.textContent = formatClock(state.time);
+    updateSeekFill();
   });
   seek.addEventListener("change", () => {
     seeking = false;

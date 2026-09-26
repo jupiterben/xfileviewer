@@ -51,6 +51,10 @@ fn scan_io_error(stage: &str, path: &str, err: std::io::Error) -> String {
     message
 }
 
+/// Files per IPC batch. One channel message per file floods the webview on
+/// large folders; 50 keeps latency low while cutting message count ~50x.
+const BATCH_SIZE: usize = 50;
+
 fn scan_dir_files(
     dir: &str,
     mut emit: impl FnMut(ScanBatch) -> Result<(), String>,
@@ -59,6 +63,7 @@ fn scan_dir_files(
     let mut scanned = 0;
     let mut system_files = 0;
     let mut non_files = 0;
+    let mut pending: Vec<String> = Vec::new();
     let mut last_progress = std::time::Instant::now();
     eprintln!("[list_dir_files] starting dir={dir:?}");
     emit(ScanBatch {
@@ -67,9 +72,13 @@ fn scan_dir_files(
         done: false,
     })?;
     for entry in directory::read_dir(dir).map_err(|err| scan_io_error("打开目录", dir, err))? {
-        if last_progress.elapsed() >= std::time::Duration::from_millis(250) {
+        // Flush on batch size or a 250ms heartbeat, whichever comes first —
+        // the heartbeat keeps the "scanned" counter moving on slow drives.
+        if pending.len() >= BATCH_SIZE
+            || last_progress.elapsed() >= std::time::Duration::from_millis(250)
+        {
             emit(ScanBatch {
-                files: Vec::new(),
+                files: std::mem::take(&mut pending),
                 scanned,
                 done: false,
             })?;
@@ -91,11 +100,7 @@ fn scan_dir_files(
         }
         let path = entry.path;
         if entry.is_file {
-            emit(ScanBatch {
-                files: vec![path.to_string_lossy().into_owned()],
-                scanned,
-                done: false,
-            })?;
+            pending.push(path.to_string_lossy().into_owned());
             found += 1;
         } else {
             non_files += 1;
@@ -105,8 +110,10 @@ fn scan_dir_files(
         "[list_dir_files] dir={dir:?}, scanned={scanned}, files={}, system_files={system_files}, non_files={non_files}",
         found
     );
+    // The final batch carries whatever is still pending, so no discovery is
+    // ever lost between the last flush and completion.
     emit(ScanBatch {
-        files: Vec::new(),
+        files: pending,
         scanned,
         done: true,
     })
@@ -145,7 +152,9 @@ mod tests {
                 .filter(|batch| !batch.files.is_empty())
                 .collect();
             assert_eq!(discoveries.len(), 1);
-            assert!(!discoveries[0].done);
+            // A lone discovery rides the final done batch; no separate
+            // per-file message is emitted.
+            assert!(discoveries[0].done);
             assert_eq!(
                 discoveries[0].files,
                 vec![root.join("正常视频.mp4").to_string_lossy().into_owned()]
@@ -167,6 +176,57 @@ mod tests {
         if let Err(panic) = outcome {
             std::panic::resume_unwind(panic);
         }
+    }
+
+    #[test]
+    fn directory_scan_batches_large_folders() {
+        let root = std::env::temp_dir().join(format!(
+            "xfileviewer-scan-batch-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&root).unwrap();
+        let count = BATCH_SIZE * 2 + 7;
+        for i in 0..count {
+            fs::write(root.join(format!("clip{i:04}.mp4")), b"test").unwrap();
+        }
+        let mut total = 0usize;
+        let mut batches = 0usize;
+        let result = || {
+            scan_dir_files(root.to_str().unwrap(), |batch| {
+                if !batch.files.is_empty() {
+                    batches += 1;
+                    assert!(
+                        batch.files.len() <= BATCH_SIZE,
+                        "batch {} exceeds the cap",
+                        batch.files.len()
+                    );
+                }
+                for file in &batch.files {
+                    assert!(file.ends_with(".mp4"));
+                    total += 1;
+                }
+                if batch.done {
+                    // All files must have been flushed by the final batch.
+                    assert_eq!(total, count);
+                }
+                Ok(())
+            })
+            .unwrap();
+        };
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(result));
+        for i in 0..count {
+            fs::remove_file(root.join(format!("clip{i:04}.mp4"))).unwrap();
+        }
+        fs::remove_dir(&root).unwrap();
+        if let Err(panic) = outcome {
+            std::panic::resume_unwind(panic);
+        }
+        // 257 files must batch down to a handful of messages, not 257.
+        assert!(batches <= 8, "expected batching, got {batches} batches");
     }
 
     #[test]

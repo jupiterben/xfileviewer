@@ -1,7 +1,7 @@
 //! libmpv owns decoding and a child HWND; the WebView owns playback controls.
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, ffi::{c_char, c_void, CStr, CString}, path::Path, ptr, sync::Mutex, time::Instant};
+use std::{collections::HashMap, ffi::{c_char, c_void, CStr, CString}, path::{Path, PathBuf}, ptr, sync::{mpsc, Mutex}, time::Instant};
 use tauri::Manager;
 use windows_sys::Win32::{Foundation::*, System::LibraryLoader::GetModuleHandleW, UI::WindowsAndMessaging::*};
 
@@ -62,17 +62,12 @@ struct Player {
     mpv_drop: Option<DropGuard>,
 }
 // All access is serialized by NativeVideo. libmpv's client API is thread-safe.
-// HWND creation/layout/destruction is performed by synchronous main-thread commands.
+// HWND creation/layout/destruction is performed by the main thread.
 unsafe impl Send for Player {}
-impl Drop for Player {
-    fn drop(&mut self) {
-        // Revoke the drop targets while the windows are still alive; the
-        // guards would otherwise fire after DestroyWindow.
-        self.mpv_drop = None;
-        self.host_drop = None;
-        unsafe { (self.api.destroy)(self.handle); DestroyWindow(self.hwnd); }
-    }
-}
+// NOTE: no Drop impl. Teardown must not run on whatever thread happens to
+// drop the player — mpv shutdown belongs on a worker and RevokeDragDrop/
+// DestroyWindow belong on the main thread. Every removal path
+// (close, eviction, replace, init failure) calls release_detached explicitly.
 
 /// Register the drop forwarder on mpv's render child window. mpv creates that
 /// window asynchronously during the first loadfile, so this is retried from
@@ -138,6 +133,80 @@ impl Player {
 /// before close() catches up. Exceeding the cap evicts the least-recently-used session.
 const MAX_PLAYERS: usize = 4;
 
+/// The mpv host HWND plus its OLE drop registration, marshalled between the
+/// main thread and workers. Win32 requires `RevokeDragDrop` (registered on
+/// the main STA) and `DestroyWindow` (creating thread) to run on the main
+/// thread, so every drop of these handles is executed there via
+/// `run_on_main_thread`; the plain-pointer types are only moved, never used
+/// concurrently.
+struct HostWindow {
+    hwnd: HWND,
+    host_drop: Option<DropGuard>,
+}
+unsafe impl Send for HostWindow {}
+
+/// Create the mpv host child window and its OLE drop forwarder. MUST run on
+/// the main (GUI/STA) thread: CreateWindowExW for a child of a main-thread
+/// window and RegisterDragDrop are both main-thread work.
+fn create_host_window(parent: HWND, app: &tauri::AppHandle) -> Result<HostWindow, String> {
+    let class: Vec<u16> = "STATIC\0".encode_utf16().collect();
+    let hwnd = unsafe { CreateWindowExW(WS_EX_NOACTIVATE | WS_EX_TRANSPARENT, class.as_ptr(), ptr::null(),
+        WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_DISABLED, 0, 0, 1, 1, parent, ptr::null_mut(), GetModuleHandleW(ptr::null()), ptr::null()) };
+    if hwnd.is_null() { return Err("无法创建视频显示区域".into()); }
+    // wry only registered drop targets on the windows that existed at webview
+    // creation, so drops over the video rectangle would die on this HWND.
+    // Register our forwarder; failure is non-fatal (playback still works).
+    let host_drop = match video_drop::register_drop_forwarder(
+        windows::Win32::Foundation::HWND(hwnd as _),
+        app.clone(),
+    ) {
+        Ok(guard) => Some(guard),
+        Err(err) => {
+            eprintln!("[native_video] register drop target on host window: {err}");
+            None
+        }
+    };
+    Ok(HostWindow { hwnd, host_drop })
+}
+
+/// OLE revocation + DestroyWindow payload. Win32 requires both on the main
+/// thread (the STA that registered the drop targets / the HWND's creating
+/// thread), so workers marshal this back via `run_on_main_thread`.
+struct WindowCleanup {
+    hwnd: HWND,
+    host_drop: Option<DropGuard>,
+    mpv_drop: Option<DropGuard>,
+}
+unsafe impl Send for WindowCleanup {}
+
+/// Runs on the main thread: revoke the drop targets while the window is
+/// still alive, then destroy it.
+fn run_window_cleanup(cleanup: WindowCleanup) {
+    let WindowCleanup { hwnd, host_drop, mpv_drop } = cleanup;
+    drop(mpv_drop);
+    drop(host_drop);
+    unsafe { DestroyWindow(hwnd) };
+}
+
+/// Tear a player down off the main thread. libmpv shutdown blocks for
+/// hundreds of ms, so it runs on a worker; OLE revocation and DestroyWindow
+/// are marshalled back to the main thread, which owns the STA and the HWND.
+fn release_detached(app: &tauri::AppHandle, player: Player) {
+    let app = app.clone();
+    // Hide the stale frame immediately; teardown completes asynchronously.
+    unsafe { ShowWindow(player.hwnd, SW_HIDE) };
+    // The closure must capture `player` as a whole (its fields are !Send);
+    // destructuring happens inside `player_teardown`, past capture analysis.
+    std::thread::spawn(move || player_teardown(app, player));
+}
+
+fn player_teardown(app: tauri::AppHandle, player: Player) {
+    let Player { api, handle, hwnd, host_drop, mpv_drop, .. } = player;
+    unsafe { (api.destroy)(handle) };
+    let cleanup = WindowCleanup { hwnd, host_drop, mpv_drop };
+    let _ = app.run_on_main_thread(move || run_window_cleanup(cleanup));
+}
+
 #[derive(Default)]
 pub struct NativeVideo {
     sessions: Mutex<HashMap<String, Player>>,
@@ -185,13 +254,17 @@ impl Evictable for Player {
     fn last_used(&self) -> Instant { self.last_used }
 }
 
-fn evict_lru_by<K, V: Evictable>(map: &mut HashMap<K, V>)
+fn evict_lru_by<K, V: Evictable>(map: &mut HashMap<K, V>, mut release: impl FnMut(V))
 where
     K: std::hash::Hash + Eq + Clone,
 {
     if map.len() <= MAX_PLAYERS { return; }
     let victim = map.iter().min_by_key(|(_, v)| v.last_used()).map(|(k, _)| k.clone());
-    if let Some(key) = victim { map.remove(&key); }
+    if let Some(key) = victim {
+        if let Some(value) = map.remove(&key) {
+            release(value);
+        }
+    }
 }
 
 /// Turn a Windows path into a percent-encoded `file://` URL for libmpv.
@@ -209,8 +282,51 @@ fn path_to_mpv_url(path: &str) -> String {
     )
 }
 
+/// Initialize libmpv against a freshly created host window. Runs on the
+/// blocking pool (D3D11 device creation and decoder probing are slow) — the
+/// window's event loop keeps pumping meanwhile.
+///
+/// Takes `host` by value as a whole: destructuring it inside a closure would
+/// capture `hwnd`/`host_drop` field-wise and bypass the manual `Send` impl.
+fn init_player(
+    host: HostWindow,
+    library: PathBuf,
+    bounds: Bounds,
+    path: String,
+    volume: f64,
+    muted: bool,
+    app: &tauri::AppHandle,
+) -> Result<Player, String> {
+    let HostWindow { hwnd, host_drop } = host;
+    let api = unsafe { Api::load(&library)? };
+    let handle = unsafe { (api.create)() };
+    if handle.is_null() { return Err("无法创建解码器".into()); }
+    let player = Player { api, handle, hwnd, bounds: bounds.clone(), ended: false, error: None, last_used: Instant::now(), host_drop, mpv_drop: None };
+    let init = (|| -> Result<(), String> {
+        for (name, value) in [("config", "no"), ("terminal", "no"), ("input-default-bindings", "no"),
+            ("input-vo-keyboard", "no"), ("input-cursor", "no"), ("osc", "no"), ("osd-level", "0"),
+            ("idle", "yes"), ("keep-open", "yes"), ("hwdec", "auto-safe"), ("vo", "gpu"), ("gpu-api", "d3d11")] {
+            player.set(name, value, true)?;
+        }
+        player.set("wid", &(hwnd as usize as u32).to_string(), true)?;
+        player.set("volume", &(volume * 100.0).to_string(), true)?;
+        player.set("mute", if muted { "yes" } else { "no" }, true)?;
+        player.api.check(unsafe { (player.api.initialize)(handle) })?;
+        apply_bounds(hwnd, &bounds)?;
+        player.command(&["loadfile", &path_to_mpv_url(&path)])?;
+        Ok(())
+    })();
+    if let Err(err) = init {
+        // The player never made it into the session map: tear it down
+        // via the same off-main-thread path as close/eviction.
+        release_detached(app, player);
+        return Err(err);
+    }
+    Ok(player)
+}
+
 #[tauri::command]
-pub fn native_video_open(window: tauri::Window, state: tauri::State<NativeVideo>, session: String, path: String, bounds: Bounds, volume: f64, muted: bool) -> Result<(), String> {
+pub async fn native_video_open(window: tauri::Window, state: tauri::State<'_, NativeVideo>, session: String, path: String, bounds: Bounds, volume: f64, muted: bool) -> Result<(), String> {
     // This is a multi-WebView window once video-overlay exists. Injecting
     // WebviewWindow here (or in layout/close) makes Tauri reject subsequent
     // commands with "current webview is not a WebviewWindow".
@@ -219,45 +335,41 @@ pub fn native_video_open(window: tauri::Window, state: tauri::State<NativeVideo>
     let library = if cfg!(debug_assertions) {
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/mpv/libmpv-2.dll")
     } else { window.app_handle().path().resource_dir().map_err(|e| e.to_string())?.join("native/mpv/libmpv-2.dll") };
-    let mut guard = state.sessions.lock().map_err(|e| e.to_string())?;
-    // Re-opening the same session refreshes the player in place; any other session
-    // is replaced so we never leak an mpv instance on the window's child tree.
-    guard.remove(&session);
-    let api = unsafe { Api::load(&library)? };
-    let parent = window.hwnd().map_err(|e| e.to_string())?.0 as HWND;
-    let class: Vec<u16> = "STATIC\0".encode_utf16().collect();
-    let hwnd = unsafe { CreateWindowExW(WS_EX_NOACTIVATE | WS_EX_TRANSPARENT, class.as_ptr(), ptr::null(),
-        WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_DISABLED, 0, 0, 1, 1, parent, ptr::null_mut(), GetModuleHandleW(ptr::null()), ptr::null()) };
-    if hwnd.is_null() { return Err("无法创建视频显示区域".into()); }
-    // wry only registered drop targets on the windows that existed at webview
-    // creation, so drops over the video rectangle would die on this HWND.
-    // Register our forwarder; failure is non-fatal (playback still works).
-    let host_drop = match video_drop::register_drop_forwarder(
-        windows::Win32::Foundation::HWND(hwnd as _),
-        window.app_handle().clone(),
-    ) {
-        Ok(guard) => Some(guard),
-        Err(err) => {
-            eprintln!("[native_video] register drop target on host window: {err}");
-            None
+    let app = window.app_handle().clone();
+    // HWND is a bare pointer and not Send; marshal it to the main thread as
+    // an address and reinterpret it there. It is only ever used as an HWND
+    // again, never dereferenced concurrently.
+    let parent_addr = window.hwnd().map_err(|e| e.to_string())?.0 as usize;
+    // HWND + OLE registration must stay on the main (GUI/STA) thread; this
+    // command runs on the async runtime. The channel also doubles as an
+    // error path: if the main-thread closure is dropped (app shutting down),
+    // the sender drops and recv() unblocks with an error instead of hanging.
+    let (tx, rx) = mpsc::channel::<Result<HostWindow, String>>();
+    let hook = app.clone();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(create_host_window(parent_addr as HWND, &hook));
+    }).map_err(|e| e.to_string())?;
+    let host = tauri::async_runtime::spawn_blocking(move || {
+        rx.recv().map_err(|err| err.to_string())?
+    }).await.map_err(|e| e.to_string())??;
+
+    let task_app = app.clone();
+    let player = tauri::async_runtime::spawn_blocking(move || {
+        init_player(host, library, bounds, path, volume, muted, &task_app)
+    }).await.map_err(|e| e.to_string())??;
+
+    {
+        let mut guard = state.sessions.lock().map_err(|e| e.to_string())?;
+        // Re-opening the same session refreshes the player in place; the old
+        // player is released asynchronously (mpv shutdown off the main
+        // thread), so a stale close can never freeze the window.
+        if let Some(prev) = guard.remove(&session) {
+            release_detached(&app, prev);
         }
-    };
-    let handle = unsafe { (api.create)() };
-    if handle.is_null() { unsafe { DestroyWindow(hwnd); } return Err("无法创建解码器".into()); }
-    let player = Player { api, handle, hwnd, bounds: bounds.clone(), ended: false, error: None, last_used: Instant::now(), host_drop, mpv_drop: None };
-    for (name, value) in [("config", "no"), ("terminal", "no"), ("input-default-bindings", "no"),
-        ("input-vo-keyboard", "no"), ("input-cursor", "no"), ("osc", "no"), ("osd-level", "0"),
-        ("idle", "yes"), ("keep-open", "yes"), ("hwdec", "auto-safe"), ("vo", "gpu"), ("gpu-api", "d3d11")] {
-        player.set(name, value, true)?;
+        guard.insert(session, player);
+        let evict_app = app.clone();
+        evict_lru_by(&mut guard, move |victim| release_detached(&evict_app, victim));
     }
-    player.set("wid", &(hwnd as usize as u32).to_string(), true)?;
-    player.set("volume", &(volume * 100.0).to_string(), true)?;
-    player.set("mute", if muted { "yes" } else { "no" }, true)?;
-    player.api.check(unsafe { (player.api.initialize)(handle) })?;
-    apply_bounds(hwnd, &bounds)?;
-    player.command(&["loadfile", &path_to_mpv_url(&path)])?;
-    guard.insert(session, player);
-    evict_lru_by(&mut guard);
     Ok(())
 }
 
@@ -298,20 +410,38 @@ pub fn native_video_layout(window: tauri::Window, state: tauri::State<NativeVide
     Ok(())
 }
 #[tauri::command]
-pub fn native_video_close(window: tauri::Window, state: tauri::State<NativeVideo>, session: String) -> Result<(), String> {
-    let result = close_session(&state.sessions, &session);
-    // Keep one reusable WebView. A stale close must not hide a newer session,
-    // and closing during asynchronous creation must not race its label reuse.
-    if state.sessions.lock().map_err(|e| e.to_string())?.is_empty() {
-        crate::video_overlay::hide(window.app_handle());
-    }
-    result
+pub async fn native_video_close(window: tauri::Window, session: String) -> Result<(), String> {
+    let app = window.app_handle().clone();
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let result = match remove_session(&app.state::<NativeVideo>().sessions, &session) {
+            // mpv shutdown runs on a worker; the main thread only revokes the
+            // drop targets and destroys the HWND, so switching files never
+            // blocks the window's event loop.
+            Some(player) => {
+                release_detached(&app, player);
+                Ok(())
+            }
+            None => Err("会话不存在".into()),
+        };
+        // Keep one reusable WebView. A stale close must not hide a newer session,
+        // and closing during asynchronous creation must not race its label reuse.
+        if app.state::<NativeVideo>().sessions.lock().map_err(|e| e.to_string())?.is_empty() {
+            crate::video_overlay::hide(&app);
+        }
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
-fn close_session(state: &Mutex<HashMap<String, Player>>, session: &str) -> Result<(), String> {
-    let mut guard = state.lock().map_err(|e| e.to_string())?;
-    if guard.remove(session).is_none() { return Err("会话不存在".into()); }
-    Ok(())
+/// Remove a session's player from the map; teardown of the returned player
+/// is the caller's job (release_detached), so this stays lock-scope pure.
+fn remove_session(
+    state: &Mutex<HashMap<String, Player>>,
+    session: &str,
+) -> Option<Player> {
+    let mut guard = state.lock().ok()?;
+    guard.remove(session)
 }
 #[tauri::command]
 pub fn native_video_control(state: tauri::State<NativeVideo>, session: String, paused: Option<bool>, volume: Option<f64>, muted: Option<bool>, time: Option<f64>) -> Result<(), String> {
@@ -352,7 +482,7 @@ mod tests {
         }
         let mut map: HashMap<&str, Stub> = HashMap::new();
         map.insert("only".into(), Stub(Instant::now()));
-        evict_lru_by(&mut map);
+        evict_lru_by(&mut map, |_| {});
         assert!(map.contains_key("only"));
     }
 
@@ -371,7 +501,8 @@ mod tests {
             map.insert(i, Stub(now - std::time::Duration::from_secs(*age)));
         }
         assert_eq!(map.len(), 5);
-        evict_lru_by(&mut map);
+        let mut released = Vec::new();
+        evict_lru_by(&mut map, |victim| released.push(victim.0));
         assert_eq!(map.len(), MAX_PLAYERS);
         // The oldest entry (60s) is gone; the four most-recent remain.
         assert!(!map.contains_key(&0));
@@ -385,8 +516,8 @@ mod tests {
         // Validates that the backend distinguishes "stale destroy after reopen"
         // from a normal close. The frontend swallows the error in destroy().
         let state = store();
-        let result = close_session(&state.sessions, "ghost");
-        assert!(result.is_err());
+        let result = remove_session(&state.sessions, "ghost");
+        assert!(result.is_none());
     }
 
     #[test]

@@ -41,6 +41,10 @@ struct Job {
 #[derive(Default)]
 pub struct HlsTranscoder {
     jobs: Mutex<HashMap<String, Job>>,
+    /// Sessions with an in-flight `start()`. A `stop()` that finds no job
+    /// entry yet marks the session here, and the starting transcode aborts
+    /// itself when it finishes waiting — a fast close never orphans ffmpeg.
+    starting: Mutex<HashMap<String, bool>>,
 }
 
 impl HlsTranscoder {
@@ -77,8 +81,47 @@ impl HlsTranscoder {
         let ffmpeg = Self::locate_ffmpeg().ok_or_else(|| "ffmpeg 不在 PATH 中".to_string())?;
         crate::media_server::open_media(path).map_err(|err| format!("无法打开视频：{err}"))?;
 
-        let mut guard = self.jobs.lock().map_err(|err| err.to_string())?;
-        if let Some(mut prev) = guard.remove(session) {
+        // Mark the session as starting so a concurrent stop() can cancel the
+        // transcode before any job entry exists. Released on every path below.
+        self.starting
+            .lock()
+            .map_err(|err| err.to_string())?
+            .insert(session.to_string(), false);
+
+        let result = self.start_inner(cache_root, media_port, media_base_url, session, path, &ffmpeg);
+        let cancelled = self
+            .starting
+            .lock()
+            .map_err(|err| err.to_string())?
+            .remove(session)
+            .unwrap_or(false);
+        if cancelled {
+            // The user closed the session while the transcode was starting.
+            // Kills a freshly-inserted job too, if racing cancellation won.
+            let _ = self.stop(session);
+            return Err("视频转码已取消".into());
+        }
+        result
+    }
+
+    /// Body of `start` without the session bookkeeping. CRITICAL: the jobs
+    /// mutex is only ever taken in short scopes here. Waiting for ffmpeg can
+    /// take up to 30 seconds, and a concurrent `stop()` (or a second `start`)
+    /// must never block on this lock for that long — it used to freeze the
+    /// main thread via the synchronous `hls_close` command.
+    fn start_inner(
+        &self,
+        cache_root: &Path,
+        media_port: u16,
+        media_base_url: &str,
+        session: &str,
+        path: &str,
+        ffmpeg: &Path,
+    ) -> Result<HlsInfo, String> {
+        // Kill any previous job for this session; lock held only for the map
+        // access, never across the wait below.
+        let prev = self.jobs.lock().map_err(|err| err.to_string())?.remove(session);
+        if let Some(mut prev) = prev {
             let _ = prev.child.kill();
             let _ = prev.child.wait();
         }
@@ -158,14 +201,20 @@ impl HlsTranscoder {
             let _ = std::fs::remove_dir_all(&dir);
             return Err(error);
         }
-        guard.insert(
+        // Re-lock only for the map update. Insert returns any job that raced
+        // us for the same session; kill it so no ffmpeg is orphaned.
+        let mut guard = self.jobs.lock().map_err(|err| err.to_string())?;
+        if let Some(mut prev) = guard.insert(
             session.to_string(),
             Job {
                 child,
                 dir,
                 url: url.clone(),
             },
-        );
+        ) {
+            let _ = prev.child.kill();
+            let _ = prev.child.wait();
+        }
         Ok(HlsInfo {
             url,
             port: media_port,
@@ -173,6 +222,10 @@ impl HlsTranscoder {
     }
 
     /// Stop a single session: kill the child, remove its temp dir.
+    ///
+    /// When no job entry exists yet, the transcode may still be starting —
+    /// mark the session for cancellation instead of failing, so a fast close
+    /// after a fast switch never orphans an ffmpeg process.
     pub fn stop(&self, session: &str) -> Result<(), String> {
         if !is_safe_segment(session) {
             return Err("非法的会话标识".into());
@@ -185,7 +238,15 @@ impl HlsTranscoder {
                 let _ = std::fs::remove_dir_all(&job.dir);
                 Ok(())
             }
-            None => Err("会话不存在".into()),
+            None => {
+                let mut starting = self.starting.lock().map_err(|err| err.to_string())?;
+                if starting.contains_key(session) {
+                    starting.insert(session.to_string(), true);
+                    Ok(())
+                } else {
+                    Err("会话不存在".into())
+                }
+            }
         }
     }
 
@@ -198,6 +259,10 @@ impl HlsTranscoder {
             let _ = job.child.kill();
             let _ = job.child.wait();
             let _ = std::fs::remove_dir_all(&job.dir);
+        }
+        drop(guard);
+        if let Ok(mut starting) = self.starting.lock() {
+            starting.clear();
         }
     }
 }
@@ -339,9 +404,18 @@ pub async fn hls_open(
 }
 
 /// Tauri command: stop the HLS session and remove its temp dir.
+///
+/// Must not run on the main thread: kill/wait plus removing every `.ts`
+/// segment is slow disk work, and historically this blocked the UI for as
+/// long as a concurrent `start()` held the jobs lock (up to 30s).
 #[tauri::command]
-pub fn hls_close(state: tauri::State<HlsTranscoder>, session: String) -> Result<(), String> {
-    state.stop(&session)
+pub async fn hls_close(app: tauri::AppHandle, session: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        app.state::<HlsTranscoder>().stop(&session)
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 #[cfg(test)]

@@ -5,7 +5,9 @@ pub(crate) fn native_video_available() -> bool {
     cfg!(windows)
 }
 
-#[tauri::command]
+/// `async` annotation: canonicalize() on a slow or disconnected network
+/// drive can block for tens of seconds; it must never run on the main thread.
+#[tauri::command(async)]
 pub(crate) fn video_stream_url(
     state: tauri::State<MediaServer>,
     path: String,

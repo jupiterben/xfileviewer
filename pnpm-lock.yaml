@@ -281,7 +281,7 @@ packages:
     resolution: {integrity: sha512-b1S7B1k9ohZ+iNTi2ATxbRYG9fTrJmUT0rc46bvVnNxqNRGW7dyo/vRREwyniI5IRN2RSJHDcm+s3BjWrSAjHw==}
 
   '@infloopgame/lib-fbx@0.1.2':
-    resolution: {integrity: sha512-lr8BHyldqO8zetxS1evv8M4T6lrMKzrJcfylSfE75WuO65xRjxyEConWRSBr87HRNm3ailVTB+aSJ1QZPcCrAg==, tarball: https://registry.npmmirror.com/@infloopgame/lib-fbx/-/lib-fbx-0.1.2.tgz}
+    resolution: {integrity: sha512-lr8BHyldqO8zetxS1evv8M4T6lrMKzrJcfylSfE75WuO65xRjxyEConWRSBr87HRNm3ailVTB+aSJ1QZPcCrAg==, tarball: http://10.147.17.153:4873/@infloopgame/lib-fbx/-/lib-fbx-0.1.2.tgz}
     engines: {node: '>=20'}
 
   '@jridgewell/gen-mapping@0.3.13':
@@ -493,7 +493,7 @@ packages:
     engines: {node: '>= 18.0.0'}
 
   '@sveltejs/vite-plugin-svelte-inspector@4.0.1':
-    resolution: {integrity: sha512-J/Nmb2Q2y7mck2hyCX4ckVHcR5tu2J+MtBEQqpDrrgELZ2uvraQcK/ioCV61AqkdXFgriksOKIceDcQmqnGhVw==, tarball: https://registry.npmmirror.com/@sveltejs/vite-plugin-svelte-inspector/-/vite-plugin-svelte-inspector-4.0.1.tgz}
+    resolution: {integrity: sha512-J/Nmb2Q2y7mck2hyCX4ckVHcR5tu2J+MtBEQqpDrrgELZ2uvraQcK/ioCV61AqkdXFgriksOKIceDcQmqnGhVw==, tarball: http://10.147.17.153:4873/@sveltejs/vite-plugin-svelte-inspector/-/vite-plugin-svelte-inspector-4.0.1.tgz}
     engines: {node: ^18.0.0 || ^20.0.0 || >=22}
     peerDependencies:
       '@sveltejs/vite-plugin-svelte': ^5.0.0
@@ -501,7 +501,7 @@ packages:
       vite: ^6.0.0
 
   '@sveltejs/vite-plugin-svelte@5.1.1':
-    resolution: {integrity: sha512-Y1Cs7hhTc+a5E9Va/xwKlAJoariQyHY+5zBgCZg4PFWNYQ1nMN9sjK1zhw1gK69DuqVP++sht/1GZg1aRwmAXQ==, tarball: https://registry.npmmirror.com/@sveltejs/vite-plugin-svelte/-/vite-plugin-svelte-5.1.1.tgz}
+    resolution: {integrity: sha512-Y1Cs7hhTc+a5E9Va/xwKlAJoariQyHY+5zBgCZg4PFWNYQ1nMN9sjK1zhw1gK69DuqVP++sht/1GZg1aRwmAXQ==, tarball: http://10.147.17.153:4873/@sveltejs/vite-plugin-svelte/-/vite-plugin-svelte-5.1.1.tgz}
     engines: {node: ^18.0.0 || ^20.0.0 || >=22}
     peerDependencies:
       svelte: ^5.0.0
