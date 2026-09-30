@@ -1,6 +1,7 @@
 import { mount, unmount, flushSync } from "svelte";
 import ModelInfo from "../../ui/ModelInfo.svelte";
 import * as THREE from "three";
+import type { FbxDetails } from "./fbx/details";
 
 export interface ModelStats {
   meshes: number;
@@ -52,14 +53,14 @@ export function createInfoPanel() {
   return {
     panel, toggle,
     destroy() { void unmount(view); },
-    update(name: string, bytes: number, format: string, box: THREE.Box3, stats: ModelStats) {
+    update(name: string, bytes: number, format: string, box: THREE.Box3, stats: ModelStats, details?: FbxDetails) {
       const rows: Array<[string, string | number]> = [
         ["文件名", name], ["文件大小", formatBytes(bytes)], ["格式", format],
         ["尺寸", formatDimensions(box)], ["网格", stats.meshes], ["材质", stats.materials],
         ["顶点", stats.vertices], ["三角形", Math.round(stats.triangles)],
         ["高斯点", stats.splats || "—"], ["动画", stats.animations],
       ];
-      flushSync(() => view.update(rows));
+      flushSync(() => view.update(rows, details));
     },
   };
 }

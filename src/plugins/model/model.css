@@ -18,3 +18,21 @@
 .model-info-toggle:hover { background: rgb(255 255 255 / 6%); color: var(--text, #e8eaf0); }
 .model-status { padding: 6px 16px; color: var(--text-muted, #6d7380); font-size: 12px; border-top: 1px solid var(--border, #2a2e3a); }
 .model-loading { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(15 17 21 / 55%); pointer-events: none; color: var(--text-secondary, #a9aeba); }
+.model-info-sdk { width: clamp(260px, 34vw, 460px); padding: 12px; }
+.model-summary > summary { cursor: pointer; font-weight: 600; color: var(--text-secondary, #a9aeba); padding: 4px 0; }
+.model-summary[open] > summary { margin-bottom: 10px; }
+.model-sdk { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border, #2a2e3a); }
+.model-sdk h2 { margin-bottom: 6px; letter-spacing: 0; }
+.model-sdk-meta { margin: 0 0 12px; color: var(--text-secondary, #a9aeba); overflow-wrap: anywhere; }
+.sdk-tree { min-width: 0; font-size: 12px; letter-spacing: 0; }
+.sdk-tree-row { display: flex; align-items: flex-start; gap: 4px; min-height: 28px; padding: 5px 6px; box-sizing: border-box; cursor: pointer; border-radius: 3px; }
+.sdk-tree-row:hover { background: rgb(255 255 255 / 6%); }
+.sdk-tree-row:focus-visible { outline: 2px solid var(--accent, #8ab4f8); outline-offset: -2px; background: rgb(255 255 255 / 8%); }
+.sdk-tree-chevron { display: flex; align-items: center; width: 14px; height: 18px; flex-shrink: 0; color: var(--text-secondary, #a9aeba); }
+.sdk-tree-content { min-width: 0; line-height: 18px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.sdk-tree-label { margin-right: 8px; font-weight: 500; }
+.sdk-tree-value { color: var(--text-secondary, #a9aeba); font-family: ui-monospace, Consolas, monospace; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .model-main:has(.model-info-sdk:not([hidden])) { display: grid; grid-template-columns: minmax(0, 1fr) 22px; grid-template-rows: minmax(220px, 1fr) minmax(180px, 1fr); overflow: auto; }
+  .model-info-sdk { grid-column: 1 / -1; width: 100%; min-height: 0; border-top: 1px solid var(--border, #2a2e3a); }
+}

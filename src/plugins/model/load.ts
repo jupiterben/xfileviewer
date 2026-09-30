@@ -6,6 +6,7 @@ import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
 import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { extensionOf } from "../../core/path";
+import { releaseFbxDetails } from "./fbx/details";
 
 /** Draco WASM decoder served from public/draco (see vite publicDir). */
 const DRACO_DECODER_PATH = "/draco/";
@@ -134,6 +135,7 @@ export async function parseModel(buffer: ArrayBuffer, src: string, path: string,
 }
 
 export function disposeModel(root: THREE.Object3D): void {
+  releaseFbxDetails(root);
   const objectURLs: unknown = root.userData.fbxObjectURLs;
   if (Array.isArray(objectURLs)) {
     for (const url of objectURLs) if (typeof url === "string") URL.revokeObjectURL(url);

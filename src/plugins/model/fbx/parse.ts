@@ -1,6 +1,7 @@
 import { buildScene, parse } from "@infloopgame/lib-fbx";
 import { AnimationClip, TextureLoader, type Group, type LoadingManager } from "three";
 import { sceneToThree } from "./sceneToThree";
+import { setFbxDetails } from "./details";
 
 /** FBX loading follows the lib-fbx reference viewer: parse → buildScene →
  * SDK scene graph → three.js. The library does not sample animation curves,
@@ -17,5 +18,6 @@ export function parseFbx(buffer: ArrayBuffer, base: string, manager: LoadingMana
   model.userData.fbxParser = "@infloopgame/lib-fbx";
   model.userData.fbxVersion = document.version;
   model.userData.fbxFormat = document.format;
+  setFbxDetails(model, { document, scene });
   return model;
 }

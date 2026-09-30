@@ -106,6 +106,22 @@
         "role": "Viewer"
       },
       {
+        "name": "TGA Image",
+        "ext": [
+          "tga"
+        ],
+        "mimeType": "image/x-tga",
+        "role": "Viewer"
+      },
+      {
+        "name": "Photoshop Image",
+        "ext": [
+          "psd"
+        ],
+        "mimeType": "image/vnd.adobe.photoshop",
+        "role": "Viewer"
+      },
+      {
         "name": "MPEG-4 Video",
         "ext": [
           "mp4"

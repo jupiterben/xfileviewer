@@ -19,6 +19,10 @@ Windows：安装 Node.js 22+、Rust 的 Windows MSVC 工具链，以及 Visual S
 .\install.bat -Help           # 查看帮助
 ```
 
+### 图片格式
+
+支持 JPEG、PNG、GIF、WebP、BMP、SVG、TGA 和 PSD，同目录图片可混合翻页。TGA 支持常见未压缩和 RLE 编码；PSD 显示文件内保存的合成预览，不提供图层编辑。PSD 建议启用 Photoshop 的“最大兼容性”保存；不受支持的编码或缺失合成预览会显示加载错误。
+
 ### 视频解码
 
 Windows 安装包内置 libmpv（`native/mpv/libmpv-2.dll`），HEVC / H.264 / VP9 等常见编码开箱即用，不需要额外装系统解码器。如果遇到"当前内核不支持该视频格式"，DevTools 会同时给出线索（控制台 + 控制条状态栏）。

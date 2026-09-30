@@ -28,6 +28,10 @@ export function builtinPlugins(): PluginManifest[] {
           "bmp",
           "svg",
         ]),
+        lazyViewer(
+          { id: "image-decoded", kindId: "image", extensions: ["tga", "psd"] },
+          async () => (await import("./decodedImageViewer")).decodedImageViewer(),
+        ),
       ],
     },
     {

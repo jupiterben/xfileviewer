@@ -28,6 +28,7 @@ import { createFileContextMenu } from "./fileContextMenu";
 const host = document.querySelector<HTMLElement>("#viewer-host")!;
 const prevBtn = document.querySelector<HTMLButtonElement>("#prev")!;
 const nextBtn = document.querySelector<HTMLButtonElement>("#next")!;
+const mainRow = document.querySelector<HTMLElement>(".main-row")!;
 const workspace = document.querySelector<HTMLElement>(".workspace")!;
 const scanStatusEl = document.createElement("div");
 scanStatusEl.className = "scan-status";
@@ -46,7 +47,7 @@ const viewerSession = createViewerSession();
 let settingsOpen = false;
 const associations = createAssociationController(registry, open => {
   settingsOpen = open;
-  workspace.hidden = open;
+  mainRow.hidden = open;
   syncSidebar();
   if (open) setWindowTitle("设置");
   else updateChrome();
@@ -92,10 +93,10 @@ function showEmpty(message: string) {
   host.replaceChildren();
   syncSidebar();
   emptyView = mount(EmptyState, { target: host, props: {
-    message, version: appVersionLabel, onSettings: () => { void associations.open(); },
+    message, version: appVersionLabel, onOpen: openWithDialog,
+    onSettings: () => { void associations.open(); },
   } });
-  setWindowTitle("");
-  syncNavButtons(true);
+  updateChrome();
   windowController.sync();
 }
 
@@ -210,7 +211,9 @@ async function openWithDialog() {
     }] });
     if (typeof path === "string") await openPath(path);
   } catch (error) {
-    renderError(`无法打开文件：${error instanceof Error ? error.message : String(error)}`);
+    const message = `无法打开文件：${error instanceof Error ? error.message : String(error)}`;
+    if (sequence) renderError(message);
+    else showEmpty(message);
   } finally {
     openingDialog = false;
   }
@@ -398,7 +401,7 @@ export async function bootApplication() {
   // Handshake from the overlay webview: it fires this once its popup
   // listeners are live, unblocking the popupMode switch in videoViewer.
   await listen("video-overlay-ready", () => markOverlayReady());
-  showEmpty("双击图片、视频或 Markdown，或把文件拖到这里");
+  showEmpty("尚未打开文件");
   // Subscribe before draining the pending path so Finder opens cannot be lost
   // between frontend initialization and the startup command.
   let openingLaunch = Promise.resolve();

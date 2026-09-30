@@ -97,6 +97,7 @@ fn mime_for_ext(ext: &str) -> Option<&'static str> {
         "webp" => "image/webp",
         "bmp" => "image/bmp",
         "svg" => "image/svg+xml",
+        "tga" => "image/x-tga",
         "mp4" | "m4v" => "video/mp4",
         "webm" => "video/webm",
         "mkv" => "video/x-matroska",
@@ -199,7 +200,7 @@ Terminal=false
 Type=Application
 StartupWMClass=xfileviewer
 Categories=Utility;Viewer;
-MimeType=image/jpeg;image/png;image/gif;image/webp;image/bmp;image/svg+xml;video/mp4;video/webm;video/x-matroska;video/quicktime;video/x-msvideo;text/markdown;text/x-markdown;model/gltf-binary;model/gltf+json;model/obj;application/vnd.autodesk.fbx;application/x-ply;application/x-splat;application/x-ksplat;
+MimeType=image/jpeg;image/png;image/gif;image/webp;image/bmp;image/svg+xml;image/x-tga;image/vnd.adobe.photoshop;video/mp4;video/webm;video/x-matroska;video/quicktime;video/x-msvideo;text/markdown;text/x-markdown;model/gltf-binary;model/gltf+json;model/obj;application/vnd.autodesk.fbx;application/x-ply;application/x-splat;application/x-ksplat;
 ";
     fs::write(&path, body).map_err(|err| err.to_string())?;
     let _ = std::process::Command::new("update-desktop-database")
@@ -426,6 +427,7 @@ mod tests {
         assert_eq!(mime_for_ext("mp4"), Some("video/mp4"));
         assert_eq!(mime_for_ext("md"), Some("text/markdown"));
         assert_eq!(mime_for_ext("psd"), Some("image/vnd.adobe.photoshop"));
+        assert_eq!(mime_for_ext("TGA"), Some("image/x-tga"));
         assert_eq!(mime_for_ext("xyz"), None);
     }
 

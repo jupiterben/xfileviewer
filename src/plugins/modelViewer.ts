@@ -7,6 +7,7 @@ import { basename } from "../core/path";
 import { loadContent, type ModelContent } from "./model/content";
 import { MODEL_EXTENSIONS } from "./model/formats";
 import { createInfoPanel } from "./model/info";
+import { getFbxDetails } from "./model/fbx/details";
 import "./model/model.css";
 
 export function modelViewer(): Viewer {
@@ -98,7 +99,7 @@ export function modelViewer(): Viewer {
         if (!loaded.isSplat && !bounds.isEmpty()) model.position.sub(bounds.getCenter(new THREE.Vector3()));
         wireframeInput.disabled = loaded.isSplat || loaded.stats.meshes === 0;
         wireframeInput.title = wireframeInput.disabled ? "线框仅适用于网格模型" : "显示网格线框";
-        info.update(basename(ctx.path), loaded.bytes, loaded.format, bounds, loaded.stats);
+        info.update(basename(ctx.path), loaded.bytes, loaded.format, bounds, loaded.stats, getFbxDetails(model));
         applyWireframe(wireframe);
         const sphere = (loaded.isSplat ? bounds : new THREE.Box3().setFromObject(model)).getBoundingSphere(new THREE.Sphere());
         if (!Number.isFinite(sphere.radius) || sphere.radius < 0) throw new Error("模型没有可显示的几何体");
