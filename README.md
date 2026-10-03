@@ -13,6 +13,8 @@ Windows：安装 Node.js 22+、Rust 的 Windows MSVC 工具链，以及 Visual S
 
 脚本自动下载内置 libmpv 解码器、执行 `npm ci`、编译 Release 版 NSIS 安装包并静默安装到当前用户，完成后可从开始菜单打开。安装前请关闭正在运行的 xfileviewer。首次构建需要联网下载依赖和打包工具；缺少 WebView2 时安装程序会下载运行时。
 
+Windows 脚本会读取 `src-tauri/rust-toolchain.toml` 对应的 Rust 版本，并在本次构建中统一使用该版本的 MSVC 工具链；缺失时自动安装，不修改全局默认工具链。这也避免默认主机为 GNU 时，Tauri 误报 MSVC 目标未安装。
+
 ```powershell
 .\install.bat                 # 一键编译安装
 .\install.bat -BuildOnly      # 仅生成安装包

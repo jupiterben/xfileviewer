@@ -21,7 +21,7 @@ goto parse
 pushd "%~dp0"
 if errorlevel 1 goto finish
 set "entered=1"
-for %%C in (node.exe npm.cmd cargo.exe rustc.exe) do (
+for %%C in (node.exe npm.cmd rustup.exe cargo.exe rustc.exe) do (
     where %%C >nul 2>nul
     if errorlevel 1 (
         echo ERROR: Missing %%C. Install Node.js 22+ and Rust MSVC, then reopen the terminal.
@@ -33,6 +33,28 @@ if errorlevel 1 (
     echo ERROR: Node.js 22 or newer is required.
     goto finish
 )
+rem Resolve the project's pinned version before selecting its Windows MSVC host.
+rem Otherwise rustc in the root and rustup in src-tauri can select different hosts.
+set "rustToolchain="
+pushd "src-tauri"
+if errorlevel 1 goto finish
+for /f "tokens=1" %%T in ('rustup.exe show active-toolchain') do set "rustToolchain=%%T"
+popd
+if not defined rustToolchain (
+    echo ERROR: Cannot resolve the Rust toolchain for src-tauri.
+    goto finish
+)
+set "rustToolchain=%rustToolchain:-pc-windows-gnullvm=-pc-windows-msvc%"
+set "rustToolchain=%rustToolchain:-pc-windows-gnu=-pc-windows-msvc%"
+rustup.exe run "%rustToolchain%" rustc.exe --version >nul 2>nul
+if errorlevel 1 (
+    echo Installing Rust toolchain: %rustToolchain%
+    rustup.exe toolchain install "%rustToolchain%" --profile minimal
+    if errorlevel 1 goto failed
+)
+rem Keep npm, Tauri, cargo and rustup on the same toolchain in every working directory.
+set "RUSTUP_TOOLCHAIN=%rustToolchain%"
+echo Rust toolchain: %RUSTUP_TOOLCHAIN%
 set "target="
 for /f "tokens=2" %%T in ('rustc.exe -vV ^| findstr /b "host:"') do set "target=%%T"
 set "arch="
