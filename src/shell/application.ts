@@ -1,6 +1,7 @@
 import { mount, unmount } from "svelte";
 import EmptyState from "../ui/EmptyState.svelte";
 import Sidebar from "../ui/Sidebar.svelte";
+import { filePathKey } from "../ui/fileTree";
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -39,10 +40,16 @@ const mediaWindowBtn = document.querySelector<HTMLButtonElement>("#media-window-
 const registry = new PluginRegistry();
 let sequence: Sequence | null = null;
 let openRequest = 0;
+let sequenceRequest = 0;
 let scanning = false;
 let scanError = "";
 let scannedEntries = 0;
 let receivedFiles = 0;
+const directoryPaths = new Map<string, string>();
+const loadedDirectories = new Set<string>();
+const loadingDirectories = new Set<string>();
+let directoryErrors: Record<string, string> = {};
+let appendSequence: ReturnType<typeof createSequenceAppender> | null = null;
 const viewerSession = createViewerSession();
 let settingsOpen = false;
 const associations = createAssociationController(registry, open => {
@@ -60,11 +67,23 @@ let emptyView: ReturnType<typeof mount> | undefined;
 const sidebarEl = document.querySelector<HTMLElement>("#sidebar")!;
 const sidebar = mount(Sidebar, { target: sidebarEl, props: {
   onSelect: (index: number) => goTo(index),
+  onLoadDirectory: (path: string) => {
+    if (associations.isInteractionBlocked() || sequenceRequest !== openRequest
+      || !directoryPaths.has(filePathKey(path))) return;
+    void scanFolder(path, sequenceRequest);
+  },
 } });
 
 function syncSidebar() {
   sidebarEl.hidden = settingsOpen || !sequence;
-  sidebar.update(sequence?.items ?? [], sequence?.index ?? -1);
+  sidebar.update(sequence?.items ?? [], sequence?.index ?? -1, {
+    session: sequenceRequest,
+    root: sequence?.folder ?? "",
+    directories: [...directoryPaths.values()],
+    loaded: [...loadedDirectories],
+    loading: [...loadingDirectories],
+    errors: { ...directoryErrors },
+  });
 }
 
 function sidebarChromeWidth(): number {
@@ -246,6 +265,12 @@ async function openPath(path: string) {
   }
   destroyViewer();
   sequence = next;
+  sequenceRequest = request;
+  appendSequence = createSequenceAppender(next, registry.extensionsForKind(kindId));
+  directoryPaths.clear();
+  loadedDirectories.clear();
+  loadingDirectories.clear();
+  directoryErrors = {};
   scanning = true;
   await windowController.restore(kindId);
   if (request !== openRequest) return;
@@ -257,23 +282,52 @@ async function scanSequence(path: string, kindId: string, request: number) {
   try {
     const folder = await invoke<string>("parent_dir", { path });
     if (request !== openRequest || !sequence) return;
-    const append = createSequenceAppender(sequence, registry.extensionsForKind(kindId));
-    const onBatch = new Channel<{ files: string[]; scanned: number; done: boolean }>();
+    sequence.folder = folder;
+    console.info("[sequence] starting scan", { folder, kindId });
+    await scanFolder(folder, request, true);
+  } catch (err) {
+    if (request !== openRequest) return;
+    scanError = `目录扫描失败：${String(err)}`;
+    scanning = false;
+    updateChrome();
+  }
+}
+
+/** Read only an expanded directory; discoveries share one deduplicating appender. */
+async function scanFolder(folder: string, request: number, isRoot = false) {
+  const id = filePathKey(folder);
+  if (request !== openRequest || !sequence || !appendSequence
+    || loadingDirectories.has(id) || loadedDirectories.has(id)) return;
+  loadingDirectories.add(id);
+  delete directoryErrors[id];
+  scanning = true;
+  updateChrome();
+  let lastScanned = 0;
+  try {
+    const onBatch = new Channel<{ files: string[]; directories?: string[]; scanned: number; done: boolean }>();
     onBatch.onmessage = (batch) => {
-      if (request !== openRequest || !sequence) return;
-      scannedEntries = batch.scanned;
+      if (request !== openRequest || !sequence || !appendSequence) return;
+      scannedEntries += Math.max(0, batch.scanned - lastScanned);
+      lastScanned = batch.scanned;
       receivedFiles += batch.files.length;
-      for (const file of batch.files) append(sequence, file);
-      if (batch.done) scanning = false;
+      for (const file of batch.files) appendSequence(sequence, file);
+      for (const directory of batch.directories ?? []) directoryPaths.set(filePathKey(directory), directory);
+      if (batch.done) {
+        loadingDirectories.delete(id);
+        loadedDirectories.add(id);
+      }
+      scanning = loadingDirectories.size > 0;
       updateChrome();
     };
-    console.info("[sequence] starting scan", { folder, kindId });
     await invoke("list_dir_files", { dir: folder, onBatch });
   } catch (err) {
     if (request !== openRequest) return;
-    console.error("[sequence] scan failed", { path, error: err });
-    scanError = `目录扫描失败：${String(err)}`;
-    scanning = false;
+    console.error("[sequence] scan failed", { folder, error: err });
+    loadingDirectories.delete(id);
+    loadedDirectories.delete(id);
+    directoryErrors[id] = String(err);
+    if (isRoot) scanError = `目录扫描失败：${String(err)}`;
+    scanning = loadingDirectories.size > 0;
     updateChrome();
   }
 }
@@ -300,6 +354,11 @@ function goTo(index: number) {
   sequence = { ...sequence, index };
   mountCurrent();
 }
+
+// Preserve native button activation while isolating video playback shortcuts.
+sidebarEl.addEventListener("keydown", event => {
+  if (event.key === " " || event.key === "Enter") event.stopPropagation();
+});
 
 prevBtn.addEventListener("click", () => go(-1));
 nextBtn.addEventListener("click", () => go(1));
@@ -329,7 +388,7 @@ window.addEventListener("keydown", (e) => {
     void openWithDialog();
     return;
   }
-  if (!sequence) return;
+  if (!sequence || (e.target instanceof Node && sidebarEl.contains(e.target))) return;
   const step = sequenceStepForKey(sequence.kindId, e.key);
   if (!step) return;
   e.preventDefault();
@@ -340,6 +399,8 @@ window.addEventListener(
   "wheel",
   (e) => {
     if (associations.isInteractionBlocked() || !sequence) return;
+    // Scroll the sidebar without accidentally changing the viewed file.
+    if (e.target instanceof Node && sidebarEl.contains(e.target)) return;
     if (!kindUsesWheelPaging(sequence.kindId)) return;
     e.preventDefault();
     const dir = wheelPage(e.deltaY);

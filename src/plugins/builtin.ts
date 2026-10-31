@@ -1,8 +1,9 @@
 import { MODEL_EXTENSIONS } from "./model/formats";
 import type { PluginManifest } from "../core/types";
-import { imageViewer } from "./imageViewer";
 import { lazyViewer } from "./lazyViewer";
 
+// Registration is metadata-only. Keep implementations inside import() factories;
+// new file types must not pull their runtime dependencies into the shell.
 export function builtinPlugins(): PluginManifest[] {
   return [
     {
@@ -19,15 +20,10 @@ export function builtinPlugins(): PluginManifest[] {
       name: "Image",
       version: "1.0.0",
       viewers: [
-        imageViewer("image-raster", [
-          "jpg",
-          "jpeg",
-          "png",
-          "gif",
-          "webp",
-          "bmp",
-          "svg",
-        ]),
+        lazyViewer(
+          { id: "image-raster", kindId: "image", extensions: ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"] },
+          async () => (await import("./imageViewer")).imageViewer("image-raster", ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"]),
+        ),
         lazyViewer(
           { id: "image-decoded", kindId: "image", extensions: ["tga", "psd"] },
           async () => (await import("./decodedImageViewer")).decodedImageViewer(),

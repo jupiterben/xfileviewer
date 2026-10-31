@@ -1,3 +1,8 @@
+import { lazyModule } from "../../core/lazyModule";
+
+const loadTga = lazyModule(() => import("three/addons/loaders/TGALoader.js"));
+const loadPsd = lazyModule(() => import("ag-psd"));
+
 const MAX_PIXELS = 64 * 1024 * 1024;
 
 function checkSize(width: number, height: number) {
@@ -75,7 +80,7 @@ export async function decodeImage(buffer: ArrayBuffer, extension: string): Promi
   let canvas: HTMLCanvasElement;
   if (extension === "tga") {
     validateTga(buffer);
-    const { TGALoader } = await import("three/addons/loaders/TGALoader.js");
+    const { TGALoader } = await loadTga();
     // Three r169 returns pixel data here, despite @types/three declaring DataTexture.
     const { width, height, data } = new TGALoader().parse(buffer) as unknown as {
       width: number; height: number; data: Uint8Array;
@@ -101,7 +106,7 @@ export async function decodeImage(buffer: ArrayBuffer, extension: string): Promi
     context.putImageData(pixels, 0, 0);
   } else if (extension === "psd") {
     validatePsd(buffer);
-    const { readPsd } = await import("ag-psd");
+    const { readPsd } = await loadPsd();
     const psd = readPsd(buffer, {
       skipLayerImageData: true,
       skipThumbnail: true,

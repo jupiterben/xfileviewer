@@ -166,6 +166,10 @@
 }
 
 .markdown-body {
+  /* Untrusted HTML and generated math/diagrams stay inside the preview area. */
+  position: relative;
+  isolation: isolate;
+  contain: paint;
   max-width: var(--md-max-width);
   margin: 0 auto;
   padding: 24px 40px 72px;

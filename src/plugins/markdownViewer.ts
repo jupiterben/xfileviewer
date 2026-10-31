@@ -7,6 +7,9 @@ import { KIND_DOCUMENT } from "../core/types";
 import type { Viewer, ViewerContext, ViewerHandle } from "../core/types";
 import { rewriteSrc } from "./markdown/assets";
 import { renderMarkdown } from "./markdown/render";
+import { sanitizeMarkdown } from "./markdown/sanitize";
+import { lazyModule } from "../core/lazyModule";
+
 import {
   MARKDOWN_THEMES,
   loadThemeId,
@@ -25,7 +28,8 @@ import {
   type MarkdownWidth,
 } from "./markdown/widths";
 import "./markdown/markdown.css";
-import "katex/dist/katex.min.css";
+
+const loadMermaid = lazyModule(async () => (await import("mermaid")).default);
 
 type PickerChoice =
   | { type: "theme"; theme: MarkdownTheme }
@@ -89,7 +93,7 @@ function mountMarkdown(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
     saveThemeId(localStorage, next.id);
     toggleLabel();
     setPickerOpen(false);
-    if (mermaidDone) await hydrateMermaid(body, next, true);
+    if (mermaidDone) await hydrateMermaid(body, next, true, () => cancelled);
   }
 
   function pickWidth(next: MarkdownWidth) {
@@ -111,7 +115,11 @@ function mountMarkdown(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
     event.preventDefault();
     if (href.startsWith("#")) {
       const id = decodeURIComponent(href.slice(1));
-      if (id) body.querySelector(`#${CSS.escape(id)}`)?.scrollIntoView();
+      if (id) {
+        const target = body.querySelector(`#${CSS.escape(id)}`)
+          ?? body.querySelector(`#${CSS.escape(`user-content-${id}`)}`);
+        target?.scrollIntoView();
+      }
       return;
     }
     if (/^https?:/i.test(href)) {
@@ -165,10 +173,12 @@ function mountMarkdown(el: HTMLElement, ctx: ViewerContext): ViewerHandle {
     try {
       const source = await readText(ctx.src);
       if (cancelled) return;
-      setUnsafeHtml(body, renderMarkdown(source));
+      const html = await sanitizeMarkdown(await renderMarkdown(source));
+      if (cancelled) return;
+      body.innerHTML = html;
       rewriteMedia(body, ctx.path);
-      await hydrateMermaid(body, theme, false);
-      mermaidDone = true;
+      await hydrateMermaid(body, theme, false, () => cancelled);
+      if (!cancelled) mermaidDone = true;
     } catch (err) {
       if (!cancelled) {
         ctx.onError(
@@ -210,18 +220,6 @@ async function readText(src: string): Promise<string> {
   return res.text();
 }
 
-function setUnsafeHtml(el: HTMLElement, html: string) {
-  el.innerHTML = html;
-  for (const old of [...el.querySelectorAll("script")]) {
-    const next = document.createElement("script");
-    for (const attr of old.attributes) {
-      next.setAttribute(attr.name, attr.value);
-    }
-    next.textContent = old.textContent;
-    old.replaceWith(next);
-  }
-}
-
 function rewriteMedia(root: HTMLElement, fromFile: string) {
   for (const node of root.querySelectorAll("img[src], video[src], source[src]")) {
     const href = node.getAttribute("src");
@@ -233,16 +231,19 @@ async function hydrateMermaid(
   root: HTMLElement,
   theme: MarkdownTheme,
   rerender: boolean,
+  isCancelled: () => boolean,
 ) {
   const nodes = [...root.querySelectorAll<HTMLElement>("pre.mermaid")];
   if (nodes.length === 0) return;
-  const { default: mermaid } = await import("mermaid");
+  const mermaid = await loadMermaid();
+  if (isCancelled()) return;
   mermaid.initialize({
     startOnLoad: false,
     theme: mermaidThemeName(theme),
-    securityLevel: "loose",
+    securityLevel: "strict",
   });
   for (const node of nodes) {
+    if (isCancelled()) return;
     if (!node.dataset.source) {
       node.dataset.source = node.textContent ?? "";
     }
@@ -254,6 +255,7 @@ async function hydrateMermaid(
     try {
       await mermaid.run({ nodes: [node] });
     } catch (err) {
+      if (isCancelled()) return;
       node.classList.add("mermaid-error");
       node.textContent =
         err instanceof Error ? err.message : "Mermaid 渲染失败";

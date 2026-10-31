@@ -47,6 +47,20 @@ describe("move", () => {
     expect(append(seq, "Y:/xx/10.MP4")).toBe(false);
     expect(seq.items).toEqual(["Y:/xx/1.mp4", origin, "Y:/xx/10.MP4"]);
   });
+  it("deduplicates drive and UNC case variants but keeps Unix case-distinct files", () => {
+    for (const [origin, discovery] of [
+      ["C:\\Photos\\a.jpg", "c:/photos/A.JPG"],
+      ["\\\\Server\\Share\\a.jpg", "//server/share/A.JPG"],
+    ]) {
+      const seq = buildSequence([], "image", imageExt, origin)!;
+      const append = createSequenceAppender(seq, imageExt);
+      expect(append(seq, discovery)).toBe(false);
+      expect(seq.items).toEqual([origin]);
+    }
+    const seq = buildSequence([], "image", imageExt, "/photos/a.jpg")!;
+    expect(createSequenceAppender(seq, imageExt)(seq, "/photos/A.JPG")).toBe(true);
+    expect(seq.items).toHaveLength(2);
+  });
   it("keeps navigation on the playing file during individual insertions", () => {
     let seq = buildSequence([], "image", imageExt, "/a/2.jpg")!;
     insertSequenceItem(seq, "/a/4.jpg", 1);

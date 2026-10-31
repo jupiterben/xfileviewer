@@ -4,6 +4,8 @@ pub struct Entry {
     pub path: PathBuf,
     pub name: OsString,
     pub is_file: bool,
+    // Never traverse directory symlinks / junctions (cycles and paths outside the root).
+    pub is_dir: bool,
 }
 
 #[cfg(not(windows))]
@@ -15,6 +17,7 @@ pub fn read_dir(dir: &str) -> io::Result<impl Iterator<Item = io::Result<Entry>>
         Ok(Entry {
             name: entry.file_name(),
             is_file: kind.is_file() || (kind.is_symlink() && path.is_file()),
+            is_dir: kind.is_dir(),
             path,
         })
     }))
@@ -35,6 +38,7 @@ mod windows {
         Storage::FileSystem::{
             FindClose, FindExInfoBasic, FindExInfoStandard, FindExSearchNameMatch,
             FindFirstFileExW, FindNextFileW, GetDriveTypeW, FILE_ATTRIBUTE_DIRECTORY,
+            FILE_ATTRIBUTE_REPARSE_POINT,
             FINDEX_INFO_LEVELS, FIND_FIRST_EX_LARGE_FETCH, WIN32_FIND_DATAW,
         },
         System::WindowsProgramming::DRIVE_REMOTE,
@@ -194,6 +198,11 @@ mod windows {
                     path: self.dir.join(&name),
                     name,
                     is_file: data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY == 0,
+                    is_dir: data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0
+                        // Name-surrogate tags are links / junctions. Cloud-file
+                        // placeholders also have REPARSE_POINT but are safe to browse.
+                        && (data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT == 0
+                            || data.dwReserved0 & 0x2000_0000 == 0),
                 }));
             }
         }

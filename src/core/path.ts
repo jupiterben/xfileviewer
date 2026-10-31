@@ -1,3 +1,10 @@
+/** Stable identity for drive / UNC paths without changing case-sensitive Unix paths. */
+export function pathKey(path: string): string {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  return /^[a-z]:/i.test(normalized) || normalized.startsWith("//")
+    ? normalized.toLowerCase() : normalized;
+}
+
 export function extensionOf(path: string): string {
   const base = basename(path);
   const i = base.lastIndexOf(".");

@@ -1,8 +1,8 @@
-import { basename, dirname, extensionOf, naturalCompare } from "./path";
+import { basename, dirname, extensionOf, naturalCompare, pathKey } from "./path";
 import type { Sequence } from "./types";
 
 function samePath(a: string, b: string): boolean {
-  return a.split("\\").join("/") === b.split("\\").join("/");
+  return pathKey(a) === pathKey(b);
 }
 
 export function buildSequence(
@@ -62,7 +62,7 @@ export function insertSequenceItem(seq: Sequence, file: string, index: number): 
 }
 
 export function createSequenceAppender(seq: Sequence, extensions: Set<string>) {
-  const key = (path: string) => path.split("\\").join("/");
+  const key = pathKey;
   const seen = new Set(seq.items.map(key));
   return (current: Sequence, file: string): boolean => {
     if (!extensions.has(extensionOf(file)) || seen.has(key(file))) return false;

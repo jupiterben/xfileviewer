@@ -1,4 +1,4 @@
-import { mount } from "svelte";
+import { flushSync, mount } from "svelte";
 import App from "../../src/ui/App.svelte";
 // @vitest-environment jsdom
 import { expect, it, vi } from "vitest";
@@ -11,7 +11,8 @@ const mocks = vi.hoisted(() => ({
   destroyed: vi.fn(),
   setTitle: vi.fn(async () => {}),
   drop: undefined as undefined | ((event: { payload: { type: string; paths: string[] } }) => void),
-  batch: undefined as undefined | { onmessage: (batch: { files: string[]; scanned: number; done: boolean }) => void },
+  batch: undefined as undefined | { onmessage: (batch: { files: string[]; directories?: string[]; scanned: number; done: boolean }) => void },
+  scans: new Map<string, { onmessage: (batch: { files: string[]; directories?: string[]; scanned: number; done: boolean }) => void }>(),
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: mocks.openDialog }));
@@ -22,7 +23,10 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (command === "load_association_settings" || command === "load_window_sizes") throw new Error("corrupt config");
     if (command === "take_launch_path") return "/fixtures/first.mp4";
     if (command === "parent_dir") return "/fixtures";
-    if (command === "list_dir_files") mocks.batch = args.onBatch;
+    if (command === "list_dir_files") {
+      mocks.batch = args.onBatch;
+      mocks.scans.set(args.dir, args.onBatch);
+    }
   }),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
@@ -79,8 +83,45 @@ it("boots with corrupt settings, scans, navigates, docks tools and discards stal
   document.querySelector<HTMLButtonElement>("#next")!.click();
   expect(mocks.contexts[1].path).toBe("/fixtures/second.mp4");
   expect(mocks.destroyed).toHaveBeenCalledTimes(1);
+  mocks.scans.get("/fixtures")!.onmessage({ files: [], directories: ["/fixtures/album", "/fixtures/other"], scanned: 4, done: true });
+  flushSync();
+  expect(mocks.scans.has("/fixtures/album")).toBe(false);
+  const folder = () => document.querySelector<HTMLButtonElement>('button[title="/fixtures/album"]')!;
+  folder().click(); flushSync();
+  await vi.waitFor(() => expect(mocks.scans.has("/fixtures/album")).toBe(true));
+  const albumScan = mocks.scans.get("/fixtures/album")!;
+  albumScan.onmessage({ files: ["/fixtures/album/third.mp4", "/fixtures/album/ignore.jpg"], directories: [], scanned: 2, done: true });
+  flushSync();
+  expect(document.querySelector('button[title="/fixtures/album/third.mp4"]')).not.toBeNull();
+  expect(document.querySelector('button[title="/fixtures/album/ignore.jpg"]')).toBeNull();
+  const mounts = mocks.contexts.length;
+  folder().click(); flushSync();
+  expect(document.querySelector('button[title="/fixtures/album/third.mp4"]')).toBeNull();
+  expect(mocks.contexts).toHaveLength(mounts);
+  folder().click(); flushSync();
+  expect(mocks.scans.get("/fixtures/album")).toBe(albumScan); // Cached, no rescan.
+  document.querySelector<HTMLButtonElement>('button[title="/fixtures/album/third.mp4"]')!.click();
+  expect(mocks.contexts[mocks.contexts.length - 1]?.path).toBe("/fixtures/album/third.mp4");
+  const keyboardLeak = vi.fn();
+  window.addEventListener("keydown", keyboardLeak);
+  const activate = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+  folder().dispatchEvent(activate);
+  expect(activate.defaultPrevented).toBe(false);
+  expect(keyboardLeak).not.toHaveBeenCalled();
+  window.removeEventListener("keydown", keyboardLeak);
+  const sidebarWheel = new WheelEvent("wheel", { deltaY: 300, bubbles: true, cancelable: true });
+  document.querySelector(".sidebar-files")!.dispatchEvent(sidebarWheel);
+  expect(sidebarWheel.defaultPrevented).toBe(false);
+  expect(mocks.contexts[mocks.contexts.length - 1]?.path).toBe("/fixtures/album/third.mp4");
+  document.querySelector<HTMLButtonElement>('button[title="/fixtures/other"]')!.click(); flushSync();
+  await vi.waitFor(() => expect(mocks.scans.has("/fixtures/other")).toBe(true));
+  const staleScan = mocks.scans.get("/fixtures/other")!;
   mocks.drop!({ payload: { type: "drop", paths: ["/fixtures/photo.jpg"] } });
   await vi.waitFor(() => expect(mocks.contexts[mocks.contexts.length - 1]?.path).toBe("/fixtures/photo.jpg"));
+  staleScan.onmessage({ files: ["/fixtures/other/stale.mp4"], directories: ["/fixtures/other/stale"], scanned: 2, done: true });
+  flushSync();
+  expect(document.querySelector('button[title="/fixtures/other/stale.mp4"]')).toBeNull();
+  expect(document.querySelector('button[title="/fixtures/other/stale"]')).toBeNull();
   mocks.contexts[0].onError("obsolete error");
   expect(document.querySelector(".error")).toBeNull();
   expect(document.querySelector("#media-window-mode")?.parentElement?.className).toBe("workspace");

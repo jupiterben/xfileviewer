@@ -1,4 +1,8 @@
 allowBuilds:
   esbuild: true
+overrides:
+  dompurify: ^3.4.17
+  devalue: ^5.9.4
+  source-map-js: ^1.2.2
 minimumReleaseAgeExclude:
   - '@infloopgame/lib-fbx@0.1.2'

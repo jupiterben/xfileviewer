@@ -1,21 +1,18 @@
 import type { Viewer, ViewerHandle, ViewerNavigation } from "../core/types";
+import { lazyModule } from "../core/lazyModule";
 
 export function lazyViewer(
   descriptor: Pick<Viewer, "id" | "kindId" | "extensions">,
   load: () => Promise<Viewer>,
 ): Viewer {
-  let pending: Promise<Viewer> | undefined;
+  const resolveViewer = lazyModule(load);
   return {
     ...descriptor,
     mount(el, ctx) {
       let destroyed = false;
       let handle: ViewerHandle | undefined;
       let navigation: ViewerNavigation | undefined;
-      pending ??= load().catch((error: unknown) => {
-        pending = undefined;
-        throw error;
-      });
-      void pending.then(viewer => {
+      void resolveViewer().then(viewer => {
         if (destroyed) return;
         const mounted = viewer.mount(el, ctx);
         if (destroyed) {

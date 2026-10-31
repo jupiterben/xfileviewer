@@ -3,6 +3,9 @@ import { extensionOf } from "../../core/path";
 import { isGaussianSplatPLY } from "./formats";
 import { computeStats, type ModelStats } from "./info";
 import { disposeModel, parseModel } from "./load";
+import { lazyModule } from "../../core/lazyModule";
+
+const loadSplatModule = lazyModule(() => import("./splat"));
 
 export interface ModelContent {
   object: THREE.Object3D;
@@ -21,7 +24,8 @@ export async function loadContent(src: string, path: string, signal: AbortSignal
   signal.throwIfAborted();
   const extension = extensionOf(path);
   if (extension === "splat" || extension === "ksplat" || (extension === "ply" && isGaussianSplatPLY(buffer))) {
-    const { loadSplat } = await import("./splat");
+    const { loadSplat } = await loadSplatModule();
+    signal.throwIfAborted();
     return loadSplat(buffer, extension, signal);
   }
   const object = await parseModel(buffer, src, path, signal);
