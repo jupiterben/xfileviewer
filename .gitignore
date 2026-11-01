@@ -31,3 +31,4 @@ dist-ssr
 src-tauri/icons/*
 src-tauri/icons.bak.*/
 
+pnpm-lock.yaml
